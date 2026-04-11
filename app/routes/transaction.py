@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from datetime import date
-
+import csv
+from fastapi.responses import StreamingResponse
+from io import StringIO
 from app.db import SessionLocal
 from app.models.transaction import Transaction
 from app.models.party import Party
@@ -241,3 +243,62 @@ def start_day(db: Session = Depends(get_db)):
     db.commit()
 
     return {"msg": "day started", "opening_stock": opening}
+
+@router.get("/report/daily")
+def daily_report(db: Session = Depends(get_db)):
+
+    today = date.today()
+
+    txns = db.query(Transaction).filter(Transaction.date == today).all()
+    expenses = db.query(Expense).filter(Expense.date == today).all()
+    stock = db.query(Stock).filter(Stock.date == today).first()
+
+    sales = sum(t.total for t in txns if t.type == "sale")
+    purchase = sum(t.total for t in txns if t.type == "purchase")
+    expense_total = sum(e.amount for e in expenses)
+
+    stock_loss = stock.difference if stock else 0
+
+    profit = sales - purchase - expense_total - stock_loss
+
+    return {
+        "date": today,
+        "sales": sales,
+        "purchase": purchase,
+        "expenses": expense_total,
+        "stock_loss": stock_loss,
+        "profit": profit
+    }
+
+@router.get("/report/outstanding")
+def outstanding_report(db: Session = Depends(get_db)):
+
+    dealers = db.query(Party).filter(Party.type == "dealer").all()
+
+    data = []
+
+    for d in dealers:
+        data.append({
+            "name": d.name,
+            "phone": d.phone,
+            "balance": d.balance
+        })
+
+    return data
+
+@router.get("/report/outstanding/csv")
+def export_outstanding(db: Session = Depends(get_db)):
+
+    dealers = db.query(Party).filter(Party.type == "dealer").all()
+
+    output = StringIO()
+    writer = csv.writer(output)
+
+    writer.writerow(["Name", "Phone", "Balance"])
+
+    for d in dealers:
+        writer.writerow([d.name, d.phone, d.balance])
+
+    output.seek(0)
+
+    return StreamingResponse(output, media_type="text/csv")
