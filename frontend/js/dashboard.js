@@ -1,9 +1,26 @@
 async function loadDashboard() {
     const date = document.getElementById("date").value;
   
-    const data = await apiCall(`/dashboard?date=${date}`);
+    if (!date) {
+      alert("Select date");
+      return;
+    }
   
-    document.getElementById("dashboardOutput").innerText =
-      JSON.stringify(data, null, 2);
+    try {
+      const data = await apiCall(`/dashboard?date=${date}`);
+  
+      document.getElementById("purchase").innerText = format(data.purchase);
+      document.getElementById("sales").innerText = format(data.sales);
+      document.getElementById("profit").innerText = format(data.profit);
+      document.getElementById("leakage").innerText = format(data.leakage);
+      document.getElementById("outstanding").innerText = format(data.total_outstanding);
+  
+    } catch (e) {
+      alert("Failed to load dashboard");
+    }
+  }
+  
+  function format(value) {
+    return "₹ " + Number(value).toLocaleString();
   }
   

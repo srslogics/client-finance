@@ -7,14 +7,47 @@
 
 <body>
 
-<h1>Dashboard</h1>
+<div class="container">
 
-<div class="card">
-  <input type="date" id="date">
-  <button onclick="loadDashboard()">Load</button>
+  <h1>Dashboard</h1>
+
+  <!-- Date Selector -->
+  <div class="card">
+    <input type="date" id="date">
+    <button onclick="loadDashboard()">Load</button>
+  </div>
+
+  <!-- Metrics -->
+  <div class="grid">
+
+    <div class="metric">
+      <h3>Purchase</h3>
+      <p id="purchase">0</p>
+    </div>
+
+    <div class="metric">
+      <h3>Sales</h3>
+      <p id="sales">0</p>
+    </div>
+
+    <div class="metric">
+      <h3>Profit</h3>
+      <p id="profit">0</p>
+    </div>
+
+    <div class="metric">
+      <h3>Leakage</h3>
+      <p id="leakage">0</p>
+    </div>
+
+    <div class="metric">
+      <h3>Outstanding</h3>
+      <p id="outstanding">0</p>
+    </div>
+
+  </div>
+
 </div>
-
-<div class="card output" id="dashboardOutput"></div>
 
 <script src="js/api.js"></script>
 <script src="js/dashboard.js"></script>
