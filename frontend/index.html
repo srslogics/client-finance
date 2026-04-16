@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Upload</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+
+<h1>Upload & Process</h1>
+
+<div class="card">
+  <h2>Vendor Upload</h2>
+  <input type="file" id="vendorFile">
+  <button onclick="uploadVendor()">Upload</button>
+</div>
+
+<div class="card">
+  <h2>Dealer Upload</h2>
+  <input type="file" id="dealerFile">
+  <button onclick="uploadDealer()">Upload</button>
+</div>
+
+<div class="card">
+  <h2>Process Day</h2>
+  <input type="date" id="date">
+  <input type="number" id="stock" placeholder="Actual Stock">
+  <button onclick="processDay()">Process</button>
+</div>
+
+<div class="card">
+  <a href="dashboard.html">Go to Dashboard</a><br><br>
+  <a href="ledger.html">Go to Ledger</a>
+</div>
+
+<div class="card output" id="output"></div>
+
+<script src="js/api.js"></script>
+<script src="js/upload.js"></script>
+
+</body>
+</html>
