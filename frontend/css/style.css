@@ -175,19 +175,66 @@
     font-weight: bold;
   }
   
-  table {
+  /* Table */
+table {
     width: 100%;
     border-collapse: collapse;
   }
   
+  thead {
+    background: #f1f5f9;
+  }
+  
   th, td {
-    padding: 10px;
-    border-bottom: 1px solid #ddd;
+    padding: 12px;
     text-align: left;
   }
   
+  tbody tr {
+    border-bottom: 1px solid #e2e8f0;
+  }
+  
+  tbody tr:hover {
+    background: #f9fafb;
+  }
+  
+  /* Empty state */
+  .empty {
+    text-align: center;
+    color: #94a3b8;
+    padding: 20px;
+  }
+  /* Amount colors */
+.credit {
+    color: #16a34a;
+    font-weight: 600;
+  }
+  
+  .debit {
+    color: #dc2626;
+    font-weight: 600;
+  }
+    
+  
   th {
     background: #f1f5f9;
+  }
+  
+  .summary {
+    margin: 15px 0;
+  }
+  
+  .summary-box {
+    background: #0f172a;
+    color: white;
+    padding: 20px;
+    border-radius: 10px;
+    width: 250px;
+  }
+  
+  .summary-box span {
+    font-size: 14px;
+    opacity: 0.7;
   }
   
   

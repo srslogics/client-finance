@@ -92,30 +92,43 @@ function loadPage(page) {
   
       content.innerHTML = `
         <div class="container">
-  
-          <div class="card">
-            <div class="row">
-              <input type="text" id="party" placeholder="Enter party name">
-              <button onclick="searchLedger()">Search</button>
+
+            <!-- Search -->
+            <div class="card search-card">
+            <input type="text" id="party" placeholder="Search party...">
+            <button onclick="searchLedger()">Search</button>
             </div>
-          </div>
-  
-          <div class="card">
+
+            <!-- Summary -->
+            <div class="summary">
+            <div class="summary-box">
+                <span>Total Balance</span>
+                <h2 id="totalBalance">₹ 0</h2>
+            </div>
+            </div>
+
+            <!-- Table -->
+            <div class="card table-card">
             <table>
-              <thead>
+                <thead>
                 <tr>
-                  <th>Date</th>
-                  <th>Type</th>
-                  <th>Amount</th>
-                  <th>Balance</th>
+                    <th>Date</th>
+                    <th>Type</th>
+                    <th>Amount</th>
+                    <th>Balance</th>
                 </tr>
-              </thead>
-              <tbody id="ledgerBody"></tbody>
+                </thead>
+                <tbody id="ledgerBody">
+                <tr>
+                    <td colspan="4" class="empty">No data yet</td>
+                </tr>
+                </tbody>
             </table>
-          </div>
-  
+            </div>
+
         </div>
-      `;
+        `;
+
     }
   }
   
