@@ -47,22 +47,44 @@ function loadPage(page) {
   
       content.innerHTML = `
         <div class="container">
-  
-          <div class="card">
+
+            <div class="card filter">
             <input type="date" id="date">
             <button onclick="loadDashboard()">Load</button>
-          </div>
-  
-          <div class="grid">
-            <div class="metric"><h3>Purchase</h3><p id="purchase">0</p></div>
-            <div class="metric"><h3>Sales</h3><p id="sales">0</p></div>
-            <div class="metric"><h3>Profit</h3><p id="profit">0</p></div>
-            <div class="metric"><h3>Leakage</h3><p id="leakage">0</p></div>
-            <div class="metric"><h3>Outstanding</h3><p id="outstanding">0</p></div>
-          </div>
-  
+            </div>
+
+            <div class="grid">
+
+            <div class="metric blue">
+                <span>Purchase</span>
+                <h2 id="purchase">₹ 0</h2>
+            </div>
+
+            <div class="metric green">
+                <span>Sales</span>
+                <h2 id="sales">₹ 0</h2>
+            </div>
+
+            <div class="metric profit">
+                <span>Profit</span>
+                <h2 id="profit">₹ 0</h2>
+            </div>
+
+            <div class="metric red">
+                <span>Leakage</span>
+                <h2 id="leakage">₹ 0</h2>
+            </div>
+
+            <div class="metric dark">
+                <span>Outstanding</span>
+                <h2 id="outstanding">₹ 0</h2>
+            </div>
+
+            </div>
+
         </div>
-      `;
+        `;
+
     }
   
     if (page === "ledger") {
