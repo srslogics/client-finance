@@ -11,35 +11,36 @@ function loadPage(page) {
       title.innerText = "Upload & Process";
   
       content.innerHTML = `
-        <div class="container">
-  
-          <div class="card">
-            <h2>Vendor Upload</h2>
-            <div class="row">
-              <input type="file" id="vendorFile">
-              <button onclick="uploadVendor()">Upload</button>
+            <div class="container">
+
+                <div class="section">
+                <h2>Step 1: Upload Vendor Data</h2>
+                <div class="upload-box">
+                    <input type="file" id="vendorFile">
+                    <button onclick="uploadVendor()">Upload</button>
+                </div>
+                </div>
+
+                <div class="section">
+                <h2>Step 2: Upload Dealer Data</h2>
+                <div class="upload-box">
+                    <input type="file" id="dealerFile">
+                    <button onclick="uploadDealer()">Upload</button>
+                </div>
+                </div>
+
+                <div class="section">
+                <h2>Step 3: Process Day</h2>
+                <div class="upload-box">
+                    <input type="date" id="date">
+                    <input type="number" id="stock" placeholder="Actual Stock (kg)">
+                    <button onclick="processDay()">Process</button>
+                </div>
+                </div>
+
             </div>
-          </div>
-  
-          <div class="card">
-            <h2>Dealer Upload</h2>
-            <div class="row">
-              <input type="file" id="dealerFile">
-              <button onclick="uploadDealer()">Upload</button>
-            </div>
-          </div>
-  
-          <div class="card">
-            <h2>Process Day</h2>
-            <div class="row">
-              <input type="date" id="date">
-              <input type="number" id="stock" placeholder="Actual Stock">
-              <button onclick="processDay()">Process</button>
-            </div>
-          </div>
-  
-        </div>
-      `;
+            `;
+
     }
   
     if (page === "dashboard") {
