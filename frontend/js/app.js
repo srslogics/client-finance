@@ -43,7 +43,7 @@ function loadPage(page) {
 
     }
   
-    if (page === "dashboard") {
+    else if (page === "dashboard") {
       title.innerText = "Dashboard";
   
       content.innerHTML = `
@@ -88,7 +88,7 @@ function loadPage(page) {
 
     }
   
-    if (page === "ledger") {
+    else if (page === "ledger") {
       title.innerText = "Ledger";
   
       content.innerHTML = `
@@ -131,9 +131,9 @@ function loadPage(page) {
         `;
 
     }
-  }
+  
 
-    if (page === "analytics") {
+    else if (page === "analytics") {
         title.innerText = "Analytics";
     
         content.innerHTML = `
@@ -154,7 +154,7 @@ function loadPage(page) {
     
         loadAnalytics();
     }
-  
+}
   
   // --- Set today's date ---
   window.onload = () => {
