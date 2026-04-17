@@ -132,6 +132,29 @@ function loadPage(page) {
 
     }
   }
+
+    if (page === "analytics") {
+        title.innerText = "Analytics";
+    
+        content.innerHTML = `
+        <div class="container">
+    
+            <div class="card">
+            <h2>Sales vs Purchase</h2>
+            <canvas id="chart1"></canvas>
+            </div>
+    
+            <div class="card">
+            <h2>Top Debtors</h2>
+            <canvas id="chart2"></canvas>
+            </div>
+    
+        </div>
+        `;
+    
+        loadAnalytics();
+    }
+  
   
   // --- Set today's date ---
   window.onload = () => {

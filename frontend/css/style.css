@@ -260,4 +260,8 @@ table {
     gap: 12px;
     align-items: center;
   }
-    
+
+  canvas {
+    max-height: 300px;
+  }
+  

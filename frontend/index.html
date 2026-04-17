@@ -3,6 +3,8 @@
 <head>
   <title>StockPilot</title>
   <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 </head>
 
 <body>
@@ -14,8 +16,9 @@
     <h2>StockPilot</h2>
 
     <div class="menu">
+        <button id="menu-dashboard" onclick="loadPage('dashboard')">Dashboard</button>
       <button id="menu-upload" onclick="loadPage('upload')">Upload</button>
-      <button id="menu-dashboard" onclick="loadPage('dashboard')">Dashboard</button>
+      <button id="menu-analytics" onclick="loadPage('analytics')">Analytics</button>
       <button id="menu-ledger" onclick="loadPage('ledger')">Ledger</button>
     </div>
   </div>
