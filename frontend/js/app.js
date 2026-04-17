@@ -158,7 +158,7 @@ function loadPage(page) {
   
   // --- Set today's date ---
   window.onload = () => {
-    loadPage("upload");
+    loadPage("dashboard");
   
     const today = new Date().toLocaleDateString();
     document.getElementById("todayDate").innerText = today;
