@@ -135,25 +135,37 @@ function loadPage(page) {
 
     else if (page === "analytics") {
         title.innerText = "Analytics";
-    
+      
         content.innerHTML = `
-        <div class="container">
-    
-            <div class="card">
-            <h2>Sales vs Purchase</h2>
-            <canvas id="chart1"></canvas>
+          <div class="container">
+      
+            <!-- Filters -->
+            <div class="card filter">
+              <input type="date" id="startDate">
+              <input type="date" id="endDate">
+              <button onclick="loadAnalytics()">Load</button>
             </div>
-    
+      
+            <!-- Charts -->
             <div class="card">
-            <h2>Top Debtors</h2>
-            <canvas id="chart2"></canvas>
+              <h2>Sales vs Purchase Trend</h2>
+              <canvas id="trendChart"></canvas>
             </div>
-    
-        </div>
+      
+            <div class="card">
+              <h2>Leakage Trend</h2>
+              <canvas id="leakageChart"></canvas>
+            </div>
+      
+            <div class="card">
+              <h2>Top Debtors</h2>
+              <canvas id="debtorChart"></canvas>
+            </div>
+      
+          </div>
         `;
-    
-        loadAnalytics();
-    }
+      }
+      
 }
   
   // --- Set today's date ---

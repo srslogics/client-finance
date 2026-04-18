@@ -682,5 +682,61 @@ def top_debtors(db: Session = Depends(get_db)):
 
     return {"top_debtors": result}
 
+
+@app.get("/analytics/trend")
+def get_trend(start_date: str, end_date: str, db: Session = Depends(get_db)):
+
+    from datetime import datetime
+
+    start = datetime.strptime(start_date, "%Y-%m-%d").date()
+    end = datetime.strptime(end_date, "%Y-%m-%d").date()
+
+    results = db.query(
+        models.Transaction.date,
+        func.sum(
+            case(
+                (models.Transaction.type == "SALE", models.Transaction.amount),
+                else_=0
+            )
+        ).label("sales"),
+        func.sum(
+            case(
+                (models.Transaction.type == "PURCHASE", models.Transaction.amount),
+                else_=0
+            )
+        ).label("purchase")
+    ).filter(
+        models.Transaction.date.between(start, end)
+    ).group_by(models.Transaction.date).order_by(models.Transaction.date).all()
+
+    return [
+        {
+            "date": str(r.date),
+            "sales": float(r.sales or 0),
+            "purchase": float(r.purchase or 0)
+        }
+        for r in results
+    ]
+
+@app.get("/analytics/leakage")
+def leakage_trend(start_date: str, end_date: str, db: Session = Depends(get_db)):
+
+    from datetime import datetime
+
+    start = datetime.strptime(start_date, "%Y-%m-%d").date()
+    end = datetime.strptime(end_date, "%Y-%m-%d").date()
+
+    rows = db.query(models.DailyStock).filter(
+        models.DailyStock.date.between(start, end)
+    ).order_by(models.DailyStock.date).all()
+
+    return [
+        {
+            "date": str(r.date),
+            "leakage": float(r.leakage or 0)
+        }
+        for r in rows
+    ]
+
 if __name__ == "__main__":
     uvicorn.run("app.main:app", host="0.0.0.0", port=10000)

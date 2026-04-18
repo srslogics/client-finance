@@ -1,37 +1,55 @@
 async function loadAnalytics() {
 
-    // --- Get today's data ---
-    const today = new Date().toISOString().split("T")[0];
-    const dashboard = await apiCall(`/dashboard?date=${today}`);
+    const start = document.getElementById("startDate").value;
+    const end = document.getElementById("endDate").value;
   
-    // --- Chart 1: Sales vs Purchase ---
-    const ctx1 = document.getElementById("chart1");
+    if (!start || !end) {
+      showToast("Select date range");
+      return;
+    }
   
-    new Chart(ctx1, {
-      type: "bar",
+    // --- Trend ---
+    const trend = await apiCall(`/analytics/trend?start_date=${start}&end_date=${end}`);
+  
+    const dates = trend.map(d => d.date);
+    const sales = trend.map(d => d.sales);
+    const purchase = trend.map(d => d.purchase);
+  
+    new Chart(document.getElementById("trendChart"), {
+      type: "line",
       data: {
-        labels: ["Purchase", "Sales"],
+        labels: dates,
+        datasets: [
+          { label: "Sales", data: sales },
+          { label: "Purchase", data: purchase }
+        ]
+      }
+    });
+  
+    // --- Leakage ---
+    const leakage = await apiCall(`/analytics/leakage?start_date=${start}&end_date=${end}`);
+  
+    new Chart(document.getElementById("leakageChart"), {
+      type: "line",
+      data: {
+        labels: leakage.map(d => d.date),
         datasets: [{
-          label: "Amount",
-          data: [dashboard.purchase, dashboard.sales],
+          label: "Leakage",
+          data: leakage.map(d => d.leakage)
         }]
       }
     });
   
-    // --- Chart 2: Top Debtors ---
+    // --- Debtors ---
     const debtors = await apiCall("/top-debtors");
   
-    const names = debtors.top_debtors.map(d => d.party_name);
-    const values = debtors.top_debtors.map(d => d.balance);
-  
-    const ctx2 = document.getElementById("chart2");
-  
-    new Chart(ctx2, {
-      type: "pie",
+    new Chart(document.getElementById("debtorChart"), {
+      type: "bar",
       data: {
-        labels: names,
+        labels: debtors.top_debtors.map(d => d.party_name),
         datasets: [{
-          data: values
+          label: "Outstanding",
+          data: debtors.top_debtors.map(d => d.balance)
         }]
       }
     });
