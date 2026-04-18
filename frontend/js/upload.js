@@ -57,7 +57,7 @@ async function handleUpload(inputId, endpoint, label) {
   }
 
   async function processDay() {
-    const date = document.getElementById("date").value;
+    const date = document.getElementById("processDate").value;
     const stock = document.getElementById("stock").value;
   
     if (!date || !stock) {

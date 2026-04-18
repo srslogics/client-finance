@@ -1,7 +1,7 @@
 let trendChart, profitChart, leakageChart;
 
 async function loadDashboard() {
-  const date = document.getElementById("date").value;
+    const date = document.getElementById("dashboardDate").value;
 
   if (!date) return showToast("Select date");
 
