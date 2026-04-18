@@ -265,3 +265,12 @@ table {
     max-height: 300px;
   }
   
+  .insights ul {
+    margin-top: 10px;
+  }
+  
+  .insights li {
+    margin-bottom: 8px;
+    color: #334155;
+  }
+  

@@ -44,49 +44,73 @@ function loadPage(page) {
     }
   
     else if (page === "dashboard") {
-      title.innerText = "Dashboard";
-  
-      content.innerHTML = `
-        <div class="container">
-
+        title.innerText = "Investor Dashboard";
+      
+        content.innerHTML = `
+          <div class="container">
+      
+            <!-- Filters -->
             <div class="card filter">
-            <input type="date" id="date">
-            <button onclick="loadDashboard()">Load</button>
+              <input type="date" id="date">
+              <button onclick="loadDashboard()">Load</button>
             </div>
-
+      
+            <!-- KPI Row -->
             <div class="grid">
-
-            <div class="metric blue">
-                <span>Purchase</span>
-                <h2 id="purchase">₹ 0</h2>
-            </div>
-
-            <div class="metric green">
-                <span>Sales</span>
+      
+              <div class="metric blue">
+                <span>Revenue</span>
                 <h2 id="sales">₹ 0</h2>
-            </div>
-
-            <div class="metric profit">
+              </div>
+      
+              <div class="metric dark">
+                <span>Cost</span>
+                <h2 id="purchase">₹ 0</h2>
+              </div>
+      
+              <div class="metric profit">
                 <span>Profit</span>
                 <h2 id="profit">₹ 0</h2>
-            </div>
-
-            <div class="metric red">
+              </div>
+      
+              <div class="metric red">
                 <span>Leakage</span>
-                <h2 id="leakage">₹ 0</h2>
-            </div>
-
-            <div class="metric dark">
+                <h2 id="leakage">0 kg</h2>
+              </div>
+      
+              <div class="metric green">
                 <span>Outstanding</span>
                 <h2 id="outstanding">₹ 0</h2>
+              </div>
+      
             </div>
-
+      
+            <!-- Charts -->
+            <div class="card">
+              <h2>Sales vs Purchase Trend</h2>
+              <canvas id="trendChart"></canvas>
             </div>
-
-        </div>
+      
+            <div class="card">
+              <h2>Profit Trend</h2>
+              <canvas id="profitChart"></canvas>
+            </div>
+      
+            <div class="card">
+              <h2>Leakage Trend</h2>
+              <canvas id="leakageChart"></canvas>
+            </div>
+      
+            <!-- Insights -->
+            <div class="card insights">
+              <h2>Insights</h2>
+              <ul id="insightsList"></ul>
+            </div>
+      
+          </div>
         `;
-
-    }
+      }
+      
   
     else if (page === "ledger") {
       title.innerText = "Ledger";
