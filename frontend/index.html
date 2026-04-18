@@ -1,10 +1,22 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>StockPilot</title>
-  <link rel="stylesheet" href="css/style.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
+  <title>StockPilot Dashboard</title>
+
+  <!-- Favicon -->
+  <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/1046/1046784.png">
+
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="css/style.css">
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 
 <body>
@@ -13,10 +25,10 @@
 
   <!-- Sidebar -->
   <div class="sidebar">
-    <h2>StockPilot</h2>
+    <h2>📊 StockPilot</h2>
 
     <div class="menu">
-        <button id="menu-dashboard" onclick="loadPage('dashboard')">Dashboard</button>
+      <button id="menu-dashboard" onclick="loadPage('dashboard')">Dashboard</button>
       <button id="menu-upload" onclick="loadPage('upload')">Upload</button>
       <button id="menu-analytics" onclick="loadPage('analytics')">Analytics</button>
       <button id="menu-ledger" onclick="loadPage('ledger')">Ledger</button>
@@ -38,22 +50,26 @@
     </div>
 
     <!-- Content -->
-    <div id="content"></div>
+    <div id="content">
+      <div class="container">
+        <p>Loading...</p>
+      </div>
+    </div>
 
   </div>
 
 </div>
 
-<!-- Toast (alerts) -->
+<!-- Toast -->
 <div id="toast"></div>
 
+<!-- Scripts (order matters) -->
 <script src="js/api.js"></script>
 <script src="js/app.js"></script>
 <script src="js/upload.js"></script>
 <script src="js/dashboard.js"></script>
 <script src="js/ledger.js"></script>
 <script src="js/analytics.js"></script>
-
 
 </body>
 </html>

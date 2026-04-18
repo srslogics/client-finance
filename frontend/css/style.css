@@ -4,6 +4,11 @@
     height: 100vh;
   }
   
+  /* Global font */
+body {
+    font-family: 'Inter', sans-serif;
+  }
+  
   /* Sidebar */
   .sidebar {
     width: 240px;
