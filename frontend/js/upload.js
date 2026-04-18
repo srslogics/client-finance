@@ -1,55 +1,59 @@
-async function uploadVendor() {
-    const file = document.getElementById("vendorFile").files[0];
+async function handleUpload(inputId, endpoint, label) {
+    const fileInput = document.getElementById(inputId);
+    const file = fileInput.files[0];
   
     if (!file) {
       showToast("Select a file");
       return;
     }
   
-    showToast("Uploading vendor file...");
+    // --- Basic validation
+    const allowed = ["application/vnd.ms-excel",
+                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     "text/csv"];
+  
+    if (!allowed.includes(file.type)) {
+      showToast("Invalid file type");
+      return;
+    }
+  
+    if (file.size > 5 * 1024 * 1024) {
+      showToast("File too large (max 5MB)");
+      return;
+    }
+  
+    showToast(`Uploading ${label}...`);
   
     const formData = new FormData();
     formData.append("file", file);
   
+    // 🔥 Disable button during upload
+    toggleButtons(true);
+  
     try {
-      const data = await apiCall("/upload/vendor", "POST", formData);
+      const data = await apiCall(endpoint, "POST", formData);
   
       if (data.error) {
-        showToast("Error: " + data.error);
+        showToast(data.error);
       } else {
-        showToast(`Uploaded ${data.rows_inserted} rows ✅`);
+        showToast(`${label} uploaded: ${data.rows_inserted} rows ✅`);
+        fileInput.value = ""; // reset input
       }
   
     } catch (e) {
+      console.error(e);
       showToast("Upload failed");
     }
+  
+    toggleButtons(false);
   }
 
-  async function uploadDealer() {
-    const file = document.getElementById("dealerFile").files[0];
-  
-    if (!file) {
-      showToast("Select a file");
-      return;
-    }
-  
-    showToast("Uploading dealer file...");
-  
-    const formData = new FormData();
-    formData.append("file", file);
-  
-    try {
-      const data = await apiCall("/upload/dealer", "POST", formData);
-  
-      if (data.error) {
-        showToast("Error: " + data.error);
-      } else {
-        showToast(`Uploaded ${data.rows_inserted} rows ✅`);
-      }
-  
-    } catch (e) {
-      showToast("Upload failed");
-    }
+  function uploadVendor() {
+    handleUpload("vendorFile", "/upload/vendor", "Vendor file");
+  }
+
+  function uploadDealer() {
+    handleUpload("dealerFile", "/upload/dealer", "Dealer file");
   }
 
   async function processDay() {
@@ -62,6 +66,7 @@ async function uploadVendor() {
     }
   
     showToast("Processing day...");
+    toggleButtons(true);
   
     try {
       const data = await apiCall(
@@ -70,13 +75,23 @@ async function uploadVendor() {
       );
   
       if (data.error) {
-        showToast("Error: " + data.error);
+        showToast(data.error);
       } else {
-        showToast(`Done. Leakage: ${data.leakage} kg`);
+        showToast(`Processed. Leakage: ${data.leakage} kg`);
       }
   
     } catch (e) {
+      console.error(e);
       showToast("Processing failed");
     }
+  
+    toggleButtons(false);
+  }
+
+  function toggleButtons(disable) {
+    document.querySelectorAll("button").forEach(btn => {
+      btn.disabled = disable;
+      btn.style.opacity = disable ? 0.6 : 1;
+    });
   }
   
