@@ -51,24 +51,39 @@ body {
   color: white;
 }
 
-.sidebar h2 {
+.brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   margin: 0 0 36px;
-  padding: 0 12px;
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 0.2px;
+  padding: 10px 12px;
+  border: 1px solid rgb(255 255 255 / 0.08);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.04);
 }
 
-.sidebar h2::before {
-  content: "";
-  width: 32px;
-  height: 32px;
+.brand img {
+  width: 42px;
+  height: 42px;
+  object-fit: cover;
   border-radius: 8px;
-  background: linear-gradient(135deg, #f6c453, #d97706);
-  box-shadow: 0 10px 22px rgb(184 111 32 / 0.26);
+  box-shadow: 0 10px 22px rgb(35 120 91 / 0.22);
+}
+
+.brand strong {
+  display: block;
+  color: white;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.brand span {
+  display: block;
+  margin-top: 4px;
+  color: #9fb0ba;
+  font-size: 12px;
+  font-weight: 650;
 }
 
 .menu {
@@ -474,7 +489,7 @@ canvas {
     padding: 18px;
   }
 
-  .sidebar h2 {
+  .brand {
     margin-bottom: 16px;
   }
 
