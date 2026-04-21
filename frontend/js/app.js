@@ -62,9 +62,10 @@ function loadPage(page) {
             <div class="upload-box process-day-controls">
               <input type="date" id="processDate">
             </div>
+            <datalist id="itemSuggestions"></datalist>
             <div id="actualStockRows" class="stock-rows">
               <div class="upload-box actual-stock-row">
-                <input type="text" class="actualItem" placeholder="Hen type">
+                <input type="text" class="actualItem" placeholder="Hen type" list="itemSuggestions" autocomplete="off" oninput="suggestItems(this)">
                 <input type="number" class="actualWeight" placeholder="Actual stock (kg)" min="0" step="0.01">
               </div>
             </div>

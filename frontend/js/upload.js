@@ -153,7 +153,7 @@ async function handleUpload(inputId, endpoint, label, preview = false) {
     const row = document.createElement("div");
     row.className = "upload-box actual-stock-row";
     row.innerHTML = `
-      <input type="text" class="actualItem" placeholder="Hen type">
+      <input type="text" class="actualItem" placeholder="Hen type" list="itemSuggestions" autocomplete="off" oninput="suggestItems(this)">
       <input type="number" class="actualWeight" placeholder="Actual stock (kg)" min="0" step="0.01">
       <button onclick="removeActualStockRow(this)">Remove</button>
     `;
@@ -163,3 +163,35 @@ async function handleUpload(inputId, endpoint, label, preview = false) {
   function removeActualStockRow(button) {
     button.closest(".actual-stock-row")?.remove();
   }
+
+let itemSuggestTimer = null;
+
+async function suggestItems(input) {
+  const suggestions = document.getElementById("itemSuggestions");
+  const query = input?.value.trim() || "";
+
+  if (!suggestions) return;
+
+  clearTimeout(itemSuggestTimer);
+
+  if (query.length < 1) {
+    suggestions.innerHTML = "";
+    return;
+  }
+
+  itemSuggestTimer = setTimeout(async () => {
+    try {
+      const data = await optionalApiCall(`/items/search?q=${encodeURIComponent(query)}`, { results: [] });
+      suggestions.innerHTML = "";
+
+      (data.results || []).forEach(item => {
+        const option = document.createElement("option");
+        option.value = item;
+        suggestions.appendChild(option);
+      });
+    } catch (e) {
+      console.error(e);
+      suggestions.innerHTML = "";
+    }
+  }, 200);
+}

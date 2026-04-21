@@ -1579,6 +1579,27 @@ def inventory_by_item(date: str, db: Session = Depends(get_db)):
     return {"inventory": result}
 
 
+@app.get("/items/search")
+def search_items(q: str = "", db: Session = Depends(get_db)):
+    normalized_query = q.strip().lower()
+    items = set()
+
+    for row in db.query(models.Transaction.item_type).filter(models.Transaction.item_type.isnot(None)).distinct().all():
+        if row.item_type:
+            items.add(row.item_type)
+
+    for row in db.query(models.ItemOpeningStock.item_type).distinct().all():
+        if row.item_type:
+            items.add(row.item_type)
+
+    results = sorted(
+        item for item in items
+        if not normalized_query or normalized_query in item.lower()
+    )[:20]
+
+    return {"results": results}
+
+
 @app.get("/analytics/profit-by-item")
 def profit_by_item(start_date: str, end_date: str, db: Session = Depends(get_db)):
     start = parse_input_date(start_date)
