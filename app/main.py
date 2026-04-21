@@ -67,6 +67,8 @@ def build_ledger(txns):
         ledger.append({
             "date": str(txn.date),
             "type": txn_type,
+            "category": txn.category or "",
+            "item": txn.item_type or "",
             "payment_mode": txn.payment_mode or "NA",
             "amount": float(amount),
             "balance": float(balance)
@@ -120,6 +122,33 @@ def normalize_payment_direction(value: str):
 
     return None
 
+
+def get_first_existing_column(df, candidates):
+    for col in candidates:
+        if col in df.columns:
+            return col
+
+    return None
+
+
+def require_column(df, candidates, label):
+    col = get_first_existing_column(df, candidates)
+    if not col:
+        return None, {"error": f"Missing column: {label}"}
+
+    return col, None
+
+
+def get_optional_row_value(row, candidates):
+    for col in candidates:
+        if col in row.index and not pd.isna(row[col]):
+            value = str(row[col]).strip()
+            if value:
+                return value
+
+    return None
+
+
 @app.post("/upload/vendor")
 def upload_vendor(file: UploadFile = File(...), db: Session = Depends(get_db)):
 
@@ -159,16 +188,30 @@ def upload_vendor(file: UploadFile = File(...), db: Session = Depends(get_db)):
 
     df.columns = df.columns.str.strip().str.upper()
 
-    required_cols = ["DATE", "VENDOR", "WEIGHT", "RATE"]
+    date_col, error = require_column(df, ["DATE"], "DATE")
+    if error:
+        return error
 
-    for col in required_cols:
-        if col not in df.columns:
-            return {"error": f"Missing column: {col}"}
+    party_col, error = require_column(df, ["VENDOR", "PARTY", "NAME"], "VENDOR")
+    if error:
+        return error
+
+    weight_col, error = require_column(df, ["KGS", "KG", "WEIGHT"], "KGS")
+    if error:
+        return error
+
+    rate_col, error = require_column(df, ["RATE_PER_KG", "RATE PER KG", "RATE/KG", "RATE"], "RATE PER KG")
+    if error:
+        return error
+
+    item_col, error = require_column(df, ["HEN_TYPE", "HEN TYPE", "ITEM", "TYPE"], "HEN TYPE")
+    if error:
+        return error
 
     # --- Numeric validation ---
     try:
-        df["WEIGHT"] = df["WEIGHT"].astype(float)
-        df["RATE"] = df["RATE"].astype(float)
+        df[weight_col] = df[weight_col].astype(float)
+        df[rate_col] = df[rate_col].astype(float)
     except:
         return {"error": "Invalid numeric values"}
 
@@ -180,13 +223,20 @@ def upload_vendor(file: UploadFile = File(...), db: Session = Depends(get_db)):
     # --- Process rows ---
     for _, row in df.iterrows():
         try:
-            if pd.isna(row["VENDOR"]) or pd.isna(row["WEIGHT"]) or pd.isna(row["RATE"]):
+            if pd.isna(row[party_col]) or pd.isna(row[weight_col]) or pd.isna(row[rate_col]) or pd.isna(row[item_col]):
                 continue
 
-            party_name = str(row["VENDOR"]).strip()
-            weight = float(row["WEIGHT"])
-            rate = float(row["RATE"])
-            date = pd.to_datetime(row["DATE"], dayfirst=True).date()
+            party_name = str(row[party_col]).strip()
+            weight = float(row[weight_col])
+            rate = float(row[rate_col])
+            date = pd.to_datetime(row[date_col], dayfirst=True).date()
+            item_type = str(row[item_col]).strip()
+            category = get_optional_row_value(row, ["CATEGORY"])
+            payment_mode = (
+                str(row["PAYMENT_MODE"]).strip()
+                if "PAYMENT_MODE" in df.columns and not pd.isna(row["PAYMENT_MODE"])
+                else "NA"
+            )
 
             if weight <= 0 or rate <= 0:
                 continue
@@ -200,23 +250,27 @@ def upload_vendor(file: UploadFile = File(...), db: Session = Depends(get_db)):
                 party_id=party_id,
                 weight=weight,
                 rate=rate,
-                type="PURCHASE"
+                type="SALE",
+                category=category,
+                item_type=item_type
             ).first()
 
-            txn_key = (date, party_id, weight, rate, "PURCHASE")
+            txn_key = (date, party_id, weight, rate, "SALE", category, item_type)
 
             if existing_txn or txn_key in seen_transactions:
                 continue
 
-            # --- Create transaction ---
+            # --- Create sale transaction ---
             txn = models.Transaction(
                 date=date,
                 party_id=party_id,
-                type="PURCHASE",
+                type="SALE",
+                category=category,
+                item_type=item_type,
                 weight=weight,
                 rate=rate,
                 amount=weight * rate,
-                payment_mode="NA"
+                payment_mode=payment_mode
             )
 
             db.add(txn)
@@ -285,16 +339,34 @@ def upload_dealer(file: UploadFile = File(...), db: Session = Depends(get_db)):
 
     df.columns = df.columns.str.strip().str.upper()
 
-    required_cols = ["DATE", "DEALER", "WEIGHT", "RATE"]
+    date_col, error = require_column(df, ["DATE"], "DATE")
+    if error:
+        return error
 
-    for col in required_cols:
-        if col not in df.columns:
-            return {"error": f"Missing column: {col}"}
+    party_col, error = require_column(df, ["DEALER", "PARTY", "NAME"], "DEALER")
+    if error:
+        return error
+
+    category_col, error = require_column(df, ["CATEGORY"], "CATEGORY")
+    if error:
+        return error
+
+    item_col, error = require_column(df, ["HEN_TYPE", "HEN TYPE", "ITEM", "TYPE"], "HEN TYPE")
+    if error:
+        return error
+
+    weight_col, error = require_column(df, ["KGS", "KG", "WEIGHT"], "KGS")
+    if error:
+        return error
+
+    rate_col, error = require_column(df, ["RATE_PER_KG", "RATE PER KG", "RATE/KG", "RATE"], "RATE PER KG")
+    if error:
+        return error
 
     # --- Numeric validation ---
     try:
-        df["WEIGHT"] = df["WEIGHT"].astype(float)
-        df["RATE"] = df["RATE"].astype(float)
+        df[weight_col] = df[weight_col].astype(float)
+        df[rate_col] = df[rate_col].astype(float)
     except:
         return {"error": "Invalid numeric values"}
 
@@ -306,13 +378,21 @@ def upload_dealer(file: UploadFile = File(...), db: Session = Depends(get_db)):
     # --- Process rows ---
     for _, row in df.iterrows():
         try:
-            if pd.isna(row["DEALER"]) or pd.isna(row["WEIGHT"]) or pd.isna(row["RATE"]):
+            if (
+                pd.isna(row[party_col]) or
+                pd.isna(row[category_col]) or
+                pd.isna(row[item_col]) or
+                pd.isna(row[weight_col]) or
+                pd.isna(row[rate_col])
+            ):
                 continue
 
-            party_name = str(row["DEALER"]).strip()
-            weight = float(row["WEIGHT"])
-            rate = float(row["RATE"])
-            date = pd.to_datetime(row["DATE"], dayfirst=True).date()
+            party_name = str(row[party_col]).strip()
+            category = str(row[category_col]).strip()
+            item_type = str(row[item_col]).strip()
+            weight = float(row[weight_col])
+            rate = float(row[rate_col])
+            date = pd.to_datetime(row[date_col], dayfirst=True).date()
 
             payment_mode = (
                 str(row["PAYMENT_MODE"]).strip()
@@ -332,19 +412,23 @@ def upload_dealer(file: UploadFile = File(...), db: Session = Depends(get_db)):
                 party_id=party_id,
                 weight=weight,
                 rate=rate,
-                type="SALE"
+                type="PURCHASE",
+                category=category,
+                item_type=item_type
             ).first()
 
-            txn_key = (date, party_id, weight, rate, "SALE")
+            txn_key = (date, party_id, weight, rate, "PURCHASE", category, item_type)
 
             if existing_txn or txn_key in seen_transactions:
                 continue
 
-            # --- Create SALE transaction ---
+            # --- Create purchase transaction ---
             txn = models.Transaction(
                 date=date,
                 party_id=party_id,
-                type="SALE",
+                type="PURCHASE",
+                category=category,
+                item_type=item_type,
                 weight=weight,
                 rate=rate,
                 amount=weight * rate,

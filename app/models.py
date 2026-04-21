@@ -33,6 +33,7 @@ class Transaction(Base):
     party_id = Column(UUID(as_uuid=True), ForeignKey("parties.id"))
     type = Column(String)
     category = Column(String)
+    item_type = Column(String)
     weight = Column(Numeric)
     rate = Column(Numeric)
     amount = Column(Numeric)
@@ -40,7 +41,7 @@ class Transaction(Base):
     created_at = Column(TIMESTAMP, server_default=func.now())
 
     __table_args__ = (
-        UniqueConstraint("date", "party_id", "weight", "rate", "type", name="unique_txn"),
+        UniqueConstraint("date", "party_id", "weight", "rate", "type", "category", "item_type", name="unique_txn"),
     )
 
 

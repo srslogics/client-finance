@@ -22,15 +22,7 @@ function loadPage(page) {
         <div class="container">
 
           <div class="section">
-            <h2>Step 1: Upload Vendor Data</h2>
-            <div class="upload-box">
-              <input type="file" id="vendorFile" accept=".csv,.xls,.xlsx">
-              <button onclick="uploadVendor()">Upload</button>
-            </div>
-          </div>
-
-          <div class="section">
-            <h2>Step 2: Upload Dealer Data</h2>
+            <h2>Step 1: Upload Dealer Purchase Data</h2>
             <div class="upload-box">
               <input type="file" id="dealerFile" accept=".csv,.xls,.xlsx">
               <button onclick="uploadDealer()">Upload</button>
@@ -38,19 +30,27 @@ function loadPage(page) {
           </div>
 
           <div class="section">
-            <h2>Step 3: Process Day</h2>
+            <h2>Step 2: Upload Vendor Sales Data</h2>
             <div class="upload-box">
-              <input type="date" id="processDate">
-              <input type="number" id="stock" placeholder="Actual Stock (kg)">
-              <button onclick="processDay()">Process</button>
+              <input type="file" id="vendorFile" accept=".csv,.xls,.xlsx">
+              <button onclick="uploadVendor()">Upload</button>
             </div>
           </div>
 
           <div class="section">
-            <h2>Step 4: Upload Payment Data</h2>
+            <h2>Step 3: Upload Payment Data</h2>
             <div class="upload-box">
               <input type="file" id="paymentFile" accept=".csv,.xls,.xlsx">
               <button onclick="uploadPayment()">Upload</button>
+            </div>
+          </div>
+
+          <div class="section">
+            <h2>Step 4: Process Day</h2>
+            <div class="upload-box">
+              <input type="date" id="processDate">
+              <input type="number" id="stock" placeholder="Actual Stock (kg)">
+              <button onclick="processDay()">Process</button>
             </div>
           </div>
 
@@ -156,6 +156,8 @@ function loadPage(page) {
                 <tr>
                   <th>Date</th>
                   <th>Type</th>
+                  <th>Category</th>
+                  <th>Item</th>
                   <th>Mode</th>
                   <th>Amount</th>
                   <th>Balance</th>
@@ -163,7 +165,7 @@ function loadPage(page) {
               </thead>
               <tbody id="ledgerBody">
                 <tr>
-                  <td colspan="5" class="empty">No data yet</td>
+                  <td colspan="7" class="empty">No data yet</td>
                 </tr>
               </tbody>
             </table>

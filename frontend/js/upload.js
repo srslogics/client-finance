@@ -56,11 +56,11 @@ async function handleUpload(inputId, endpoint, label) {
   }
 
   function uploadVendor() {
-    handleUpload("vendorFile", "/upload/vendor", "Vendor file");
+    handleUpload("vendorFile", "/upload/vendor", "Vendor sales file");
   }
 
   function uploadDealer() {
-    handleUpload("dealerFile", "/upload/dealer", "Dealer file");
+    handleUpload("dealerFile", "/upload/dealer", "Dealer purchase file");
   }
 
   function uploadPayment() {
