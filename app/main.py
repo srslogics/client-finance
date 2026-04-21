@@ -11,6 +11,7 @@ from sqlalchemy import case, func
 from decimal import Decimal
 import uvicorn
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 
 app = FastAPI()
 
@@ -37,6 +38,28 @@ def root():
     return {"message": "Backend running"}
 
 
+TEMPLATES = {
+    "dealer": "DATE,DEALER,CATEGORY,HEN_TYPE,KGS,RATE_PER_KG,PAYMENT_MODE\n2026-04-21,ABC Supplier,Dealer,Broiler,100,120,Bank\n",
+    "vendor": "DATE,VENDOR,HEN_TYPE,KGS,RATE_PER_KG,PAYMENT_MODE\n2026-04-21,XYZ Hotel,Broiler,40,150,Cash\n",
+    "payment": "DATE,PARTY,AMOUNT,PAYMENT_MODE,DIRECTION\n2026-04-21,XYZ Hotel,5000,Online,RECEIVED\n",
+    "opening-balance": "DATE,PARTY,OPENING_BALANCE,BALANCE_TYPE\n2026-04-01,XYZ Hotel,25000,RECEIVABLE\n",
+    "opening-stock": "DATE,HEN_TYPE,OPENING_KGS\n2026-04-01,Broiler,500\n"
+}
+
+
+@app.get("/templates/{template_type}")
+def download_template(template_type: str):
+    template = TEMPLATES.get(template_type)
+    if not template:
+        return {"error": "Template not found"}
+
+    return Response(
+        content=template,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={template_type}_template.csv"}
+    )
+
+
 def normalize_party_name(name: str) -> str:
     return name.lower().replace(" ", "").replace(".", "")
 
@@ -54,15 +77,14 @@ def build_ledger(txns):
 
     for txn in txns:
         amount = Decimal(txn.amount or 0)
-
-        if txn.type in ["SALE", "PURCHASE"]:
-            balance += amount
-        elif txn.type == "PAYMENT":
-            balance -= amount
+        delta = ledger_delta(txn)
+        balance += delta
 
         txn_type = txn.type
         if txn.type == "PAYMENT" and txn.category:
             txn_type = f"PAYMENT {txn.category}"
+        elif txn.type == "OPENING" and txn.category:
+            txn_type = f"OPENING {txn.category}"
 
         ledger.append({
             "date": str(txn.date),
@@ -71,10 +93,70 @@ def build_ledger(txns):
             "item": txn.item_type or "",
             "payment_mode": txn.payment_mode or "NA",
             "amount": float(amount),
+            "delta": float(delta),
             "balance": float(balance)
         })
 
     return balance, ledger
+
+
+def ledger_delta(txn):
+    amount = Decimal(txn.amount or 0)
+
+    if txn.type in ["SALE", "PURCHASE", "OPENING"]:
+        return amount
+
+    if txn.type == "PAYMENT":
+        return -amount
+
+    return Decimal("0")
+
+
+def receivable_delta(txn):
+    amount = Decimal(txn.amount or 0)
+
+    if txn.type == "SALE" or (txn.type == "OPENING" and txn.category == "RECEIVABLE"):
+        return amount
+
+    if txn.type == "PAYMENT" and txn.category == "RECEIVED":
+        return -amount
+
+    return Decimal("0")
+
+
+def payable_delta(txn):
+    amount = Decimal(txn.amount or 0)
+
+    if txn.type == "PURCHASE" or (txn.type == "OPENING" and txn.category == "PAYABLE"):
+        return amount
+
+    if txn.type == "PAYMENT" and txn.category == "PAID":
+        return -amount
+
+    return Decimal("0")
+
+
+def row_error(errors, row_number, message):
+    errors.append({"row": row_number, "error": message})
+
+
+def upload_result(inserted, skipped, errors, extra=None):
+    result = {
+        "status": "success",
+        "rows_inserted": inserted,
+        "rows_skipped": skipped,
+        "errors": errors[:25],
+        "preview": {
+            "inserted": inserted,
+            "skipped": skipped,
+            "errors": len(errors)
+        }
+    }
+
+    if extra:
+        result.update(extra)
+
+    return result
 
 
 def get_or_create_party(db: Session, party_name: str, party_type: str, seen_aliases: dict):
@@ -150,7 +232,7 @@ def get_optional_row_value(row, candidates):
 
 
 @app.post("/upload/vendor")
-def upload_vendor(file: UploadFile = File(...), db: Session = Depends(get_db)):
+def upload_vendor(file: UploadFile = File(...), preview: bool = False, db: Session = Depends(get_db)):
 
     import io
     import hashlib
@@ -216,14 +298,18 @@ def upload_vendor(file: UploadFile = File(...), db: Session = Depends(get_db)):
         return {"error": "Invalid numeric values"}
 
     inserted = 0
+    skipped = 0
     errors = []
     seen_aliases = {}
     seen_transactions = set()
 
     # --- Process rows ---
-    for _, row in df.iterrows():
+    for index, row in df.iterrows():
+        row_number = int(index) + 2
         try:
             if pd.isna(row[party_col]) or pd.isna(row[weight_col]) or pd.isna(row[rate_col]) or pd.isna(row[item_col]):
+                skipped += 1
+                row_error(errors, row_number, "Missing vendor, hen type, kg, or rate")
                 continue
 
             party_name = str(row[party_col]).strip()
@@ -239,6 +325,8 @@ def upload_vendor(file: UploadFile = File(...), db: Session = Depends(get_db)):
             )
 
             if weight <= 0 or rate <= 0:
+                skipped += 1
+                row_error(errors, row_number, "KG and rate must be greater than zero")
                 continue
 
             # --- Party mapping ---
@@ -258,6 +346,7 @@ def upload_vendor(file: UploadFile = File(...), db: Session = Depends(get_db)):
             txn_key = (date, party_id, weight, rate, "SALE", category, item_type)
 
             if existing_txn or txn_key in seen_transactions:
+                skipped += 1
                 continue
 
             # --- Create sale transaction ---
@@ -278,11 +367,16 @@ def upload_vendor(file: UploadFile = File(...), db: Session = Depends(get_db)):
             inserted += 1
 
         except Exception as e:
-            errors.append(str(e))
+            skipped += 1
+            row_error(errors, row_number, str(e))
             continue
 
     # --- Final commit (ONLY ONCE) ---
     try:
+        if preview:
+            db.rollback()
+            return upload_result(inserted, skipped, errors, {"preview_mode": True})
+
         file_record = models.UploadedFile(
             file_hash=file_hash,
             file_type="vendor"
@@ -294,14 +388,10 @@ def upload_vendor(file: UploadFile = File(...), db: Session = Depends(get_db)):
         db.rollback()
         return {"error": "Transaction failed", "details": str(e)}
 
-    return {
-        "status": "success",
-        "rows_inserted": inserted,
-        "errors": errors[:10]
-    }
+    return upload_result(inserted, skipped, errors)
 
 @app.post("/upload/dealer")
-def upload_dealer(file: UploadFile = File(...), db: Session = Depends(get_db)):
+def upload_dealer(file: UploadFile = File(...), preview: bool = False, db: Session = Depends(get_db)):
 
     import io
     import hashlib
@@ -371,12 +461,14 @@ def upload_dealer(file: UploadFile = File(...), db: Session = Depends(get_db)):
         return {"error": "Invalid numeric values"}
 
     inserted = 0
+    skipped = 0
     errors = []
     seen_aliases = {}
     seen_transactions = set()
 
     # --- Process rows ---
-    for _, row in df.iterrows():
+    for index, row in df.iterrows():
+        row_number = int(index) + 2
         try:
             if (
                 pd.isna(row[party_col]) or
@@ -385,6 +477,8 @@ def upload_dealer(file: UploadFile = File(...), db: Session = Depends(get_db)):
                 pd.isna(row[weight_col]) or
                 pd.isna(row[rate_col])
             ):
+                skipped += 1
+                row_error(errors, row_number, "Missing dealer, category, hen type, kg, or rate")
                 continue
 
             party_name = str(row[party_col]).strip()
@@ -401,6 +495,8 @@ def upload_dealer(file: UploadFile = File(...), db: Session = Depends(get_db)):
             )
 
             if weight <= 0 or rate <= 0:
+                skipped += 1
+                row_error(errors, row_number, "KG and rate must be greater than zero")
                 continue
 
             # --- Party mapping ---
@@ -420,6 +516,7 @@ def upload_dealer(file: UploadFile = File(...), db: Session = Depends(get_db)):
             txn_key = (date, party_id, weight, rate, "PURCHASE", category, item_type)
 
             if existing_txn or txn_key in seen_transactions:
+                skipped += 1
                 continue
 
             # --- Create purchase transaction ---
@@ -440,11 +537,16 @@ def upload_dealer(file: UploadFile = File(...), db: Session = Depends(get_db)):
             inserted += 1
 
         except Exception as e:
-            errors.append(str(e))
+            skipped += 1
+            row_error(errors, row_number, str(e))
             continue
 
     # --- Final commit ---
     try:
+        if preview:
+            db.rollback()
+            return upload_result(inserted, skipped, errors, {"preview_mode": True})
+
         file_record = models.UploadedFile(
             file_hash=file_hash,
             file_type="dealer"
@@ -456,15 +558,11 @@ def upload_dealer(file: UploadFile = File(...), db: Session = Depends(get_db)):
         db.rollback()
         return {"error": "Transaction failed", "details": str(e)}
 
-    return {
-        "status": "success",
-        "rows_inserted": inserted,
-        "errors": errors[:10]
-    }
+    return upload_result(inserted, skipped, errors)
 
 
 @app.post("/upload/payment")
-def upload_payment(file: UploadFile = File(...), db: Session = Depends(get_db)):
+def upload_payment(file: UploadFile = File(...), preview: bool = False, db: Session = Depends(get_db)):
 
     import io
     import hashlib
@@ -505,13 +603,17 @@ def upload_payment(file: UploadFile = File(...), db: Session = Depends(get_db)):
         return {"error": "Invalid amount values"}
 
     inserted = 0
+    skipped = 0
     errors = []
     seen_aliases = {}
     seen_payments = set()
 
-    for _, row in df.iterrows():
+    for index, row in df.iterrows():
+        row_number = int(index) + 2
         try:
             if pd.isna(row["PARTY"]) or pd.isna(row["AMOUNT"]) or pd.isna(row["DIRECTION"]):
+                skipped += 1
+                row_error(errors, row_number, "Missing party, amount, or direction")
                 continue
 
             party_name = str(row["PARTY"]).strip()
@@ -521,6 +623,8 @@ def upload_payment(file: UploadFile = File(...), db: Session = Depends(get_db)):
             direction = normalize_payment_direction(row["DIRECTION"])
 
             if not party_name or amount <= 0 or not direction:
+                skipped += 1
+                row_error(errors, row_number, "Invalid party, amount, or payment direction")
                 continue
 
             party_id = get_or_create_party(db, party_name, "BOTH", seen_aliases)
@@ -536,6 +640,7 @@ def upload_payment(file: UploadFile = File(...), db: Session = Depends(get_db)):
 
             payment_key = (target_date, party_id, amount, payment_mode, direction)
             if existing_payment or payment_key in seen_payments:
+                skipped += 1
                 continue
 
             txn = models.Transaction(
@@ -552,10 +657,15 @@ def upload_payment(file: UploadFile = File(...), db: Session = Depends(get_db)):
             inserted += 1
 
         except Exception as e:
-            errors.append(str(e))
+            skipped += 1
+            row_error(errors, row_number, str(e))
             continue
 
     try:
+        if preview:
+            db.rollback()
+            return upload_result(inserted, skipped, errors, {"preview_mode": True})
+
         file_record = models.UploadedFile(
             file_hash=file_hash,
             file_type="payment"
@@ -567,11 +677,255 @@ def upload_payment(file: UploadFile = File(...), db: Session = Depends(get_db)):
         db.rollback()
         return {"error": "Transaction failed", "details": str(e)}
 
-    return {
-        "status": "success",
-        "rows_inserted": inserted,
-        "errors": errors[:10]
-    }
+    return upload_result(inserted, skipped, errors)
+
+
+@app.post("/upload/opening-balance")
+def upload_opening_balance(file: UploadFile = File(...), preview: bool = False, db: Session = Depends(get_db)):
+
+    import io
+    import hashlib
+
+    filename = (file.filename or "").lower()
+    contents = file.file.read()
+    file_hash = hashlib.sha256(contents).hexdigest()
+
+    existing_file = db.query(models.UploadedFile).filter_by(file_hash=file_hash).first()
+    if existing_file:
+        return {"error": "File already uploaded"}
+
+    try:
+        if filename.endswith(".xlsx"):
+            df = pd.read_excel(io.BytesIO(contents), engine="openpyxl")
+        elif filename.endswith(".xls"):
+            df = pd.read_excel(io.BytesIO(contents), engine="xlrd")
+        elif filename.endswith(".csv"):
+            df = pd.read_csv(io.BytesIO(contents), encoding="utf-8")
+        else:
+            return {"error": "Unsupported file format"}
+    except Exception as e:
+        return {"error": f"File read failed: {str(e)}"}
+
+    if df.empty:
+        return {"error": "File is empty"}
+
+    df.columns = df.columns.str.strip().str.upper()
+
+    date_col, error = require_column(df, ["DATE"], "DATE")
+    if error:
+        return error
+
+    party_col, error = require_column(df, ["PARTY", "NAME", "VENDOR", "DEALER"], "PARTY")
+    if error:
+        return error
+
+    amount_col, error = require_column(df, ["OPENING_BALANCE", "OPENING BALANCE", "AMOUNT", "BALANCE"], "OPENING BALANCE")
+    if error:
+        return error
+
+    balance_type_col, error = require_column(df, ["BALANCE_TYPE", "BALANCE TYPE", "TYPE"], "BALANCE TYPE")
+    if error:
+        return error
+
+    try:
+        df[amount_col] = df[amount_col].astype(float)
+    except Exception:
+        return {"error": "Invalid opening balance values"}
+
+    inserted = 0
+    skipped = 0
+    errors = []
+    seen_aliases = {}
+    seen_opening = set()
+
+    for index, row in df.iterrows():
+        row_number = int(index) + 2
+        try:
+            if pd.isna(row[party_col]) or pd.isna(row[amount_col]) or pd.isna(row[balance_type_col]):
+                skipped += 1
+                row_error(errors, row_number, "Missing party, opening balance, or balance type")
+                continue
+
+            party_name = str(row[party_col]).strip()
+            amount = Decimal(str(float(row[amount_col])))
+            target_date = pd.to_datetime(row[date_col], dayfirst=True).date()
+            balance_type = str(row[balance_type_col]).strip().upper()
+
+            if balance_type in ["RECEIVABLE", "RECEIVE", "CUSTOMER", "VENDOR"]:
+                balance_type = "RECEIVABLE"
+                party_type = "VENDOR"
+            elif balance_type in ["PAYABLE", "PAY", "SUPPLIER", "DEALER"]:
+                balance_type = "PAYABLE"
+                party_type = "DEALER"
+            else:
+                skipped += 1
+                row_error(errors, row_number, "Balance type must be RECEIVABLE or PAYABLE")
+                continue
+
+            if not party_name or amount < 0:
+                skipped += 1
+                row_error(errors, row_number, "Invalid party or opening balance")
+                continue
+
+            party_id = get_or_create_party(db, party_name, party_type, seen_aliases)
+
+            existing_opening = db.query(models.Transaction).filter_by(
+                date=target_date,
+                party_id=party_id,
+                type="OPENING",
+                category=balance_type
+            ).first()
+
+            opening_key = (target_date, party_id, balance_type)
+            if existing_opening or opening_key in seen_opening:
+                skipped += 1
+                continue
+
+            txn = models.Transaction(
+                date=target_date,
+                party_id=party_id,
+                type="OPENING",
+                category=balance_type,
+                amount=amount,
+                payment_mode="NA"
+            )
+
+            db.add(txn)
+            seen_opening.add(opening_key)
+            inserted += 1
+
+        except Exception as e:
+            skipped += 1
+            row_error(errors, row_number, str(e))
+            continue
+
+    try:
+        if preview:
+            db.rollback()
+            return upload_result(inserted, skipped, errors, {"preview_mode": True})
+
+        file_record = models.UploadedFile(
+            file_hash=file_hash,
+            file_type="opening_balance"
+        )
+        db.add(file_record)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        return {"error": "Transaction failed", "details": str(e)}
+
+    return upload_result(inserted, skipped, errors)
+
+
+@app.post("/upload/opening-stock")
+def upload_opening_stock(file: UploadFile = File(...), preview: bool = False, db: Session = Depends(get_db)):
+
+    import io
+    import hashlib
+
+    filename = (file.filename or "").lower()
+    contents = file.file.read()
+    file_hash = hashlib.sha256(contents).hexdigest()
+
+    existing_file = db.query(models.UploadedFile).filter_by(file_hash=file_hash).first()
+    if existing_file:
+        return {"error": "File already uploaded"}
+
+    try:
+        if filename.endswith(".xlsx"):
+            df = pd.read_excel(io.BytesIO(contents), engine="openpyxl")
+        elif filename.endswith(".xls"):
+            df = pd.read_excel(io.BytesIO(contents), engine="xlrd")
+        elif filename.endswith(".csv"):
+            df = pd.read_csv(io.BytesIO(contents), encoding="utf-8")
+        else:
+            return {"error": "Unsupported file format"}
+    except Exception as e:
+        return {"error": f"File read failed: {str(e)}"}
+
+    if df.empty:
+        return {"error": "File is empty"}
+
+    df.columns = df.columns.str.strip().str.upper()
+
+    date_col, error = require_column(df, ["DATE"], "DATE")
+    if error:
+        return error
+
+    item_col, error = require_column(df, ["HEN_TYPE", "HEN TYPE", "ITEM", "TYPE"], "HEN TYPE")
+    if error:
+        return error
+
+    weight_col, error = require_column(df, ["OPENING_KGS", "OPENING KGS", "KGS", "KG", "WEIGHT"], "OPENING KGS")
+    if error:
+        return error
+
+    try:
+        df[weight_col] = df[weight_col].astype(float)
+    except Exception:
+        return {"error": "Invalid opening stock values"}
+
+    inserted = 0
+    skipped = 0
+    errors = []
+    seen_stock = set()
+
+    for index, row in df.iterrows():
+        row_number = int(index) + 2
+        try:
+            if pd.isna(row[item_col]) or pd.isna(row[weight_col]):
+                skipped += 1
+                row_error(errors, row_number, "Missing hen type or opening kg")
+                continue
+
+            target_date = pd.to_datetime(row[date_col], dayfirst=True).date()
+            item_type = str(row[item_col]).strip()
+            opening_weight = Decimal(str(float(row[weight_col])))
+
+            if not item_type or opening_weight < 0:
+                skipped += 1
+                row_error(errors, row_number, "Invalid hen type or opening kg")
+                continue
+
+            existing_stock = db.query(models.ItemOpeningStock).filter_by(
+                date=target_date,
+                item_type=item_type
+            ).first()
+
+            stock_key = (target_date, item_type)
+            if existing_stock or stock_key in seen_stock:
+                skipped += 1
+                continue
+
+            db.add(models.ItemOpeningStock(
+                date=target_date,
+                item_type=item_type,
+                opening_weight=opening_weight
+            ))
+            seen_stock.add(stock_key)
+            inserted += 1
+
+        except Exception as e:
+            skipped += 1
+            row_error(errors, row_number, str(e))
+            continue
+
+    try:
+        if preview:
+            db.rollback()
+            return upload_result(inserted, skipped, errors, {"preview_mode": True})
+
+        file_record = models.UploadedFile(
+            file_hash=file_hash,
+            file_type="opening_stock"
+        )
+        db.add(file_record)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        return {"error": "Transaction failed", "details": str(e)}
+
+    return upload_result(inserted, skipped, errors)
 
 
 @app.post("/process-day")
@@ -818,6 +1172,59 @@ def get_ledger_by_name(
     }
 
 
+@app.get("/party/detail")
+def get_party_detail(name: str, db: Session = Depends(get_db)):
+    if not name or len(name.strip()) < 2:
+        return {"error": "Invalid party name"}
+
+    normalized = normalize_party_name(name)
+    alias = db.query(models.PartyAlias).filter(
+        models.PartyAlias.normalized_alias == normalized
+    ).first()
+
+    if not alias:
+        alias = db.query(models.PartyAlias).filter(
+            models.PartyAlias.normalized_alias.contains(normalized)
+        ).first()
+
+    if not alias:
+        return {"error": "Party not found"}
+
+    party = db.query(models.Party).filter_by(id=alias.party_id).first()
+    if not party:
+        return {"error": "Party not found"}
+
+    txns = db.query(models.Transaction).filter_by(
+        party_id=party.id
+    ).order_by(models.Transaction.date.asc()).all()
+
+    balance, ledger = build_ledger(txns)
+    total_sales = sum(Decimal(t.amount or 0) for t in txns if t.type == "SALE")
+    total_purchase = sum(Decimal(t.amount or 0) for t in txns if t.type == "PURCHASE")
+    total_received = sum(Decimal(t.amount or 0) for t in txns if t.type == "PAYMENT" and t.category == "RECEIVED")
+    total_paid = sum(Decimal(t.amount or 0) for t in txns if t.type == "PAYMENT" and t.category == "PAID")
+    opening_balance = sum(Decimal(t.amount or 0) for t in txns if t.type == "OPENING")
+    last_txn = txns[-1] if txns else None
+
+    return {
+        "party": {
+            "id": str(party.id),
+            "name": party.name,
+            "type": party.type
+        },
+        "summary": {
+            "opening_balance": float(opening_balance),
+            "total_sales": float(total_sales),
+            "total_purchase": float(total_purchase),
+            "total_received": float(total_received),
+            "total_paid": float(total_paid),
+            "current_balance": float(balance),
+            "last_transaction_date": str(last_txn.date) if last_txn else None
+        },
+        "ledger": ledger
+    }
+
+
 @app.get("/dashboard")
 def get_dashboard(date: str, db: Session = Depends(get_db)):
 
@@ -843,16 +1250,9 @@ def get_dashboard(date: str, db: Session = Depends(get_db)):
             models.DailyStock.date == target_date
         ).first()
 
-        # --- Total outstanding ---
-        total_outstanding = db.query(
-            func.sum(
-                case(
-                    (models.Transaction.type.in_(["SALE", "PURCHASE"]), models.Transaction.amount),
-                    (models.Transaction.type == "PAYMENT", -models.Transaction.amount),
-                    else_=0
-                )
-            )
-        ).scalar() or 0
+        txns = db.query(models.Transaction).all()
+        receivable = sum(receivable_delta(t) for t in txns)
+        payable = sum(payable_delta(t) for t in txns)
 
         # --- Profit (simple approximation) ---
         profit = float(sales or 0) - float(purchase or 0)
@@ -871,43 +1271,48 @@ def get_dashboard(date: str, db: Session = Depends(get_db)):
         "actual_stock": float(stock.actual_closing_weight) if stock else 0,
         "leakage": float(stock.leakage) if stock else 0,
 
-        "total_outstanding": float(total_outstanding or 0)
+        "receivable": float(receivable),
+        "payable": float(payable),
+        "total_outstanding": float(receivable + payable)
     }
 
 
 @app.get("/top-debtors")
 def top_debtors(db: Session = Depends(get_db)):
-    # --- DB aggregation (efficient) ---
-    results = db.query(
-        models.Transaction.party_id,
-        func.sum(
-            case(
-                (models.Transaction.type.in_(["SALE", "PURCHASE"]), models.Transaction.amount),
-                (models.Transaction.type == "PAYMENT", -models.Transaction.amount),
-                else_=0
-            )
-        ).label("balance")
-    ).group_by(models.Transaction.party_id).order_by(
-        func.sum(
-            case(
-                (models.Transaction.type.in_(["SALE", "PURCHASE"]), models.Transaction.amount),
-                (models.Transaction.type == "PAYMENT", -models.Transaction.amount),
-                else_=0
-            )
-        ).desc()
-    ).limit(5).all()
-
     result = []
+    parties = db.query(models.Party).all()
 
-    for row in results:
-        party = db.query(models.Party).filter_by(id=row.party_id).first()
+    for party in parties:
+        txns = db.query(models.Transaction).filter_by(party_id=party.id).all()
+        balance = sum(receivable_delta(t) for t in txns)
+        if balance > 0:
+            result.append({
+                "party_name": party.name,
+                "balance": float(balance)
+            })
 
-        result.append({
-            "party_name": party.name if party else "Unknown",
-            "balance": float(row.balance or 0)
-        })
+    result = sorted(result, key=lambda row: row["balance"], reverse=True)[:5]
 
     return {"top_debtors": result}
+
+
+@app.get("/top-payables")
+def top_payables(db: Session = Depends(get_db)):
+    result = []
+    parties = db.query(models.Party).all()
+
+    for party in parties:
+        txns = db.query(models.Transaction).filter_by(party_id=party.id).all()
+        balance = sum(payable_delta(t) for t in txns)
+        if balance > 0:
+            result.append({
+                "party_name": party.name,
+                "balance": float(balance)
+            })
+
+    result = sorted(result, key=lambda row: row["balance"], reverse=True)[:5]
+
+    return {"top_payables": result}
 
 
 @app.get("/analytics/trend")
@@ -963,6 +1368,89 @@ def leakage_trend(start_date: str, end_date: str, db: Session = Depends(get_db))
             "leakage": float(r.leakage or 0)
         }
         for r in rows
+    ]
+
+
+@app.get("/inventory/by-item")
+def inventory_by_item(date: str, db: Session = Depends(get_db)):
+    target_date = parse_input_date(date)
+    if not target_date:
+        return {"error": "Invalid date format"}
+
+    items = set()
+    for row in db.query(models.Transaction.item_type).filter(models.Transaction.item_type.isnot(None)).distinct().all():
+        if row.item_type:
+            items.add(row.item_type)
+    for row in db.query(models.ItemOpeningStock.item_type).distinct().all():
+        if row.item_type:
+            items.add(row.item_type)
+
+    result = []
+
+    for item in sorted(items):
+        opening = db.query(models.ItemOpeningStock).filter(
+            models.ItemOpeningStock.item_type == item,
+            models.ItemOpeningStock.date <= target_date
+        ).order_by(models.ItemOpeningStock.date.desc()).first()
+
+        opening_date = opening.date if opening else None
+        opening_weight = Decimal(opening.opening_weight or 0) if opening else Decimal("0")
+
+        query = db.query(models.Transaction).filter(
+            models.Transaction.item_type == item,
+            models.Transaction.date <= target_date
+        )
+
+        if opening_date:
+            query = query.filter(models.Transaction.date >= opening_date)
+
+        txns = query.all()
+        purchase_weight = sum(Decimal(t.weight or 0) for t in txns if t.type == "PURCHASE")
+        sales_weight = sum(Decimal(t.weight or 0) for t in txns if t.type == "SALE")
+        closing_weight = opening_weight + purchase_weight - sales_weight
+
+        result.append({
+            "item": item,
+            "opening_date": str(opening_date) if opening_date else None,
+            "opening_weight": float(opening_weight),
+            "purchase_weight": float(purchase_weight),
+            "sales_weight": float(sales_weight),
+            "closing_weight": float(closing_weight)
+        })
+
+    return {"inventory": result}
+
+
+@app.get("/analytics/profit-by-item")
+def profit_by_item(start_date: str, end_date: str, db: Session = Depends(get_db)):
+    start = parse_input_date(start_date)
+    end = parse_input_date(end_date)
+    if not start or not end:
+        return {"error": "Invalid date format"}
+
+    txns = db.query(models.Transaction).filter(
+        models.Transaction.date.between(start, end),
+        models.Transaction.item_type.isnot(None)
+    ).all()
+
+    by_item = {}
+    for txn in txns:
+        item = txn.item_type or "Unknown"
+        by_item.setdefault(item, {"item": item, "sales": Decimal("0"), "purchase": Decimal("0")})
+
+        if txn.type == "SALE":
+            by_item[item]["sales"] += Decimal(txn.amount or 0)
+        elif txn.type == "PURCHASE":
+            by_item[item]["purchase"] += Decimal(txn.amount or 0)
+
+    return [
+        {
+            "item": row["item"],
+            "sales": float(row["sales"]),
+            "purchase": float(row["purchase"]),
+            "profit": float(row["sales"] - row["purchase"])
+        }
+        for row in by_item.values()
     ]
 
 if __name__ == "__main__":

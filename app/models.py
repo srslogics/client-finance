@@ -54,6 +54,20 @@ class UploadedFile(Base):
     created_at = Column(TIMESTAMP, server_default=func.now())
 
 
+class ItemOpeningStock(Base):
+    __tablename__ = "item_opening_stock"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    date = Column(Date, nullable=False)
+    item_type = Column(String, nullable=False)
+    opening_weight = Column(Numeric)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("date", "item_type", name="unique_item_opening_stock"),
+    )
+
+
 class DailyStock(Base):
     __tablename__ = "daily_stock"
 

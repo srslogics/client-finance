@@ -23,6 +23,7 @@ async function searchLedger() {
       if (endDate) params.set("end_date", endDate);
 
       const data = await apiCall(`/party/ledger?${params.toString()}`);
+      const detail = await apiCall(`/party/detail?name=${encodeURIComponent(name)}`);
 
       if (data.error) {
         body.innerHTML = `<tr><td colspan="7" class="empty"></td></tr>`;
@@ -47,6 +48,7 @@ async function searchLedger() {
 
       // --- Total balance
       total.innerText = formatMoney(data.total_balance);
+      renderPartySummary(detail);
 
       // --- Populate table
       body.innerHTML = "";
@@ -115,4 +117,33 @@ async function searchLedger() {
     cell.innerText = value ?? "";
     if (className) cell.className = className;
     row.appendChild(cell);
+  }
+
+  function renderPartySummary(detail) {
+    const summary = document.getElementById("partySummary");
+    if (!summary || !detail || detail.error) return;
+
+    const values = [
+      ["Opening", detail.summary.opening_balance],
+      ["Sales", detail.summary.total_sales],
+      ["Purchase", detail.summary.total_purchase],
+      ["Received", detail.summary.total_received],
+      ["Paid", detail.summary.total_paid],
+      ["Last Date", detail.summary.last_transaction_date || "-"]
+    ];
+
+    summary.innerHTML = "";
+    values.forEach(([label, value]) => {
+      const card = document.createElement("div");
+      card.className = "metric dark";
+
+      const span = document.createElement("span");
+      span.innerText = label;
+      const h2 = document.createElement("h2");
+      h2.innerText = typeof value === "number" ? formatMoney(value) : value;
+
+      card.appendChild(span);
+      card.appendChild(h2);
+      summary.appendChild(card);
+    });
   }

@@ -22,31 +22,63 @@ function loadPage(page) {
         <div class="container">
 
           <div class="section">
-            <h2>Step 1: Upload Dealer Purchase Data</h2>
+            <h2>Download Templates</h2>
+            <div class="upload-box">
+              <button onclick="downloadTemplate('dealer')">Dealer Purchase</button>
+              <button onclick="downloadTemplate('vendor')">Vendor Sales</button>
+              <button onclick="downloadTemplate('payment')">Payment</button>
+              <button onclick="downloadTemplate('opening-balance')">Opening Balance</button>
+              <button onclick="downloadTemplate('opening-stock')">Opening Stock</button>
+            </div>
+          </div>
+
+          <div class="section">
+            <h2>Step 1: Upload Opening Balance</h2>
+            <div class="upload-box">
+              <input type="file" id="openingBalanceFile" accept=".csv,.xls,.xlsx">
+              <button onclick="previewOpeningBalance()">Preview</button>
+              <button onclick="uploadOpeningBalance()">Upload</button>
+            </div>
+          </div>
+
+          <div class="section">
+            <h2>Step 2: Upload Opening Stock</h2>
+            <div class="upload-box">
+              <input type="file" id="openingStockFile" accept=".csv,.xls,.xlsx">
+              <button onclick="previewOpeningStock()">Preview</button>
+              <button onclick="uploadOpeningStock()">Upload</button>
+            </div>
+          </div>
+
+          <div class="section">
+            <h2>Step 3: Upload Dealer Purchase Data</h2>
             <div class="upload-box">
               <input type="file" id="dealerFile" accept=".csv,.xls,.xlsx">
+              <button onclick="previewDealer()">Preview</button>
               <button onclick="uploadDealer()">Upload</button>
             </div>
           </div>
 
           <div class="section">
-            <h2>Step 2: Upload Vendor Sales Data</h2>
+            <h2>Step 4: Upload Vendor Sales Data</h2>
             <div class="upload-box">
               <input type="file" id="vendorFile" accept=".csv,.xls,.xlsx">
+              <button onclick="previewVendor()">Preview</button>
               <button onclick="uploadVendor()">Upload</button>
             </div>
           </div>
 
           <div class="section">
-            <h2>Step 3: Upload Payment Data</h2>
+            <h2>Step 5: Upload Payment Data</h2>
             <div class="upload-box">
               <input type="file" id="paymentFile" accept=".csv,.xls,.xlsx">
+              <button onclick="previewPayment()">Preview</button>
               <button onclick="uploadPayment()">Upload</button>
             </div>
           </div>
 
           <div class="section">
-            <h2>Step 4: Process Day</h2>
+            <h2>Step 6: Process Day</h2>
             <div class="upload-box">
               <input type="date" id="processDate">
               <input type="number" id="stock" placeholder="Actual Stock (kg)">
@@ -92,7 +124,17 @@ function loadPage(page) {
             </div>
 
             <div class="metric green">
-              <span>Outstanding</span>
+              <span>Receivable</span>
+              <h2 id="receivable">₹ 0</h2>
+            </div>
+
+            <div class="metric dark">
+              <span>Payable</span>
+              <h2 id="payable">₹ 0</h2>
+            </div>
+
+            <div class="metric green">
+              <span>Total Outstanding</span>
               <h2 id="outstanding">₹ 0</h2>
             </div>
           </div>
@@ -115,6 +157,24 @@ function loadPage(page) {
           <div class="card insights">
             <h2>Insights</h2>
             <ul id="insightsList"></ul>
+          </div>
+
+          <div class="card table-card">
+            <h2>Inventory By Hen Type</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th>Opening</th>
+                  <th>Purchase</th>
+                  <th>Sales</th>
+                  <th>Closing</th>
+                </tr>
+              </thead>
+              <tbody id="inventoryBody">
+                <tr><td colspan="5" class="empty">No data yet</td></tr>
+              </tbody>
+            </table>
           </div>
 
         </div>
@@ -149,6 +209,8 @@ function loadPage(page) {
               <h2 id="totalBalance">₹ 0</h2>
             </div>
           </div>
+
+          <div class="grid" id="partySummary"></div>
 
           <div class="card table-card">
             <table>
@@ -201,6 +263,11 @@ function loadPage(page) {
           <div class="card">
             <h2>Top Debtors</h2>
             <canvas id="debtorChart"></canvas>
+          </div>
+
+          <div class="card">
+            <h2>Profit By Hen Type</h2>
+            <canvas id="profitByItemChart"></canvas>
           </div>
 
         </div>

@@ -1,4 +1,4 @@
-async function handleUpload(inputId, endpoint, label) {
+async function handleUpload(inputId, endpoint, label, preview = false) {
     const fileInput = document.getElementById(inputId);
     const file = fileInput.files[0];
 
@@ -29,7 +29,7 @@ async function handleUpload(inputId, endpoint, label) {
       return;
     }
 
-    showToast(`Uploading ${label}...`);
+    showToast(`${preview ? "Previewing" : "Uploading"} ${label}...`);
 
     const formData = new FormData();
     formData.append("file", file);
@@ -38,13 +38,16 @@ async function handleUpload(inputId, endpoint, label) {
     toggleButtons(true);
 
     try {
-      const data = await apiCall(endpoint, "POST", formData);
+      const url = preview ? `${endpoint}?preview=true` : endpoint;
+      const data = await apiCall(url, "POST", formData);
 
       if (data.error) {
         showToast(data.error);
       } else {
-        showToast(`${label} uploaded: ${data.rows_inserted} rows ✅`);
-        fileInput.value = ""; // reset input
+        const skipped = data.rows_skipped ? `, ${data.rows_skipped} skipped` : "";
+        const action = preview ? "preview" : "uploaded";
+        showToast(`${label} ${action}: ${data.rows_inserted} rows${skipped}`);
+        if (!preview) fileInput.value = ""; // reset input
       }
 
     } catch (e) {
@@ -59,12 +62,44 @@ async function handleUpload(inputId, endpoint, label) {
     handleUpload("vendorFile", "/upload/vendor", "Vendor sales file");
   }
 
+  function previewVendor() {
+    handleUpload("vendorFile", "/upload/vendor", "Vendor sales file", true);
+  }
+
   function uploadDealer() {
     handleUpload("dealerFile", "/upload/dealer", "Dealer purchase file");
   }
 
+  function previewDealer() {
+    handleUpload("dealerFile", "/upload/dealer", "Dealer purchase file", true);
+  }
+
   function uploadPayment() {
     handleUpload("paymentFile", "/upload/payment", "Payment file");
+  }
+
+  function previewPayment() {
+    handleUpload("paymentFile", "/upload/payment", "Payment file", true);
+  }
+
+  function uploadOpeningBalance() {
+    handleUpload("openingBalanceFile", "/upload/opening-balance", "Opening balance file");
+  }
+
+  function previewOpeningBalance() {
+    handleUpload("openingBalanceFile", "/upload/opening-balance", "Opening balance file", true);
+  }
+
+  function uploadOpeningStock() {
+    handleUpload("openingStockFile", "/upload/opening-stock", "Opening stock file");
+  }
+
+  function previewOpeningStock() {
+    handleUpload("openingStockFile", "/upload/opening-stock", "Opening stock file", true);
+  }
+
+  function downloadTemplate(type) {
+    window.location.href = `${BASE_URL}/templates/${type}`;
   }
 
   async function processDay() {

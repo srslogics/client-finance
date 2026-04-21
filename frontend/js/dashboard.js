@@ -16,6 +16,8 @@ async function loadDashboard() {
     setValue("purchase", data.purchase);
     setValue("profit", data.profit);
     document.getElementById("leakage").innerText = data.leakage + " kg";
+    setValue("receivable", data.receivable);
+    setValue("payable", data.payable);
     setValue("outstanding", data.total_outstanding);
 
     // --- Date range (last 7 days)
@@ -27,10 +29,12 @@ async function loadDashboard() {
 
     const trend = await apiCall(`/analytics/trend?start_date=${startStr}&end_date=${date}`);
     const leakage = await apiCall(`/analytics/leakage?start_date=${startStr}&end_date=${date}`);
+    const inventory = await apiCall(`/inventory/by-item?date=${date}`);
 
     // 🔥 Delay ensures DOM is ready
     setTimeout(() => {
       renderCharts(trend, leakage);
+      renderInventory(inventory.inventory || []);
       generateInsights(data, trend);
     }, 100);
 
@@ -142,3 +146,30 @@ function renderCharts(trend, leakage) {
     document.getElementById("insightsList").appendChild(li);
   }
 
+  function renderInventory(rows) {
+    const body = document.getElementById("inventoryBody");
+    if (!body) return;
+
+    body.innerHTML = "";
+
+    if (!rows.length) {
+      body.innerHTML = `<tr><td colspan="5" class="empty">No inventory data</td></tr>`;
+      return;
+    }
+
+    rows.forEach(row => {
+      const tr = document.createElement("tr");
+      appendDashboardCell(tr, row.item);
+      appendDashboardCell(tr, `${Number(row.opening_weight || 0).toLocaleString()} kg`);
+      appendDashboardCell(tr, `${Number(row.purchase_weight || 0).toLocaleString()} kg`);
+      appendDashboardCell(tr, `${Number(row.sales_weight || 0).toLocaleString()} kg`);
+      appendDashboardCell(tr, `${Number(row.closing_weight || 0).toLocaleString()} kg`);
+      body.appendChild(tr);
+    });
+  }
+
+  function appendDashboardCell(row, value) {
+    const cell = document.createElement("td");
+    cell.innerText = value ?? "";
+    row.appendChild(cell);
+  }

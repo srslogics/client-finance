@@ -1,7 +1,8 @@
 const analyticsCharts = {
   trend: null,
   leakage: null,
-  debtor: null
+  debtor: null,
+  profitByItem: null
 };
 
 async function loadAnalytics() {
@@ -20,10 +21,11 @@ async function loadAnalytics() {
     const trend = await apiCall(`/analytics/trend?start_date=${start}&end_date=${end}`);
     const leakage = await apiCall(`/analytics/leakage?start_date=${start}&end_date=${end}`);
     const debtors = await apiCall("/top-debtors");
+    const profitByItem = await apiCall(`/analytics/profit-by-item?start_date=${start}&end_date=${end}`);
 
     // 🔥 Delay ensures DOM is ready
     setTimeout(() => {
-      renderAnalyticsCharts(trend, leakage, debtors);
+      renderAnalyticsCharts(trend, leakage, debtors, profitByItem);
     }, 100);
 
   } catch (e) {
@@ -32,7 +34,7 @@ async function loadAnalytics() {
   }
 }
 
-function renderAnalyticsCharts(trend, leakage, debtors) {
+function renderAnalyticsCharts(trend, leakage, debtors, profitByItem) {
 
     // --- Safety checks ---
     if (!trend || trend.length === 0) {
@@ -86,6 +88,19 @@ function renderAnalyticsCharts(trend, leakage, debtors) {
         }
       });
     }
+
+    if (profitByItem && profitByItem.length > 0) {
+      analyticsCharts.profitByItem = new Chart(document.getElementById("profitByItemChart"), {
+        type: "bar",
+        data: {
+          labels: profitByItem.map(d => d.item),
+          datasets: [{
+            label: "Profit",
+            data: profitByItem.map(d => d.profit || 0)
+          }]
+        }
+      });
+    }
   }
 
 function destroyAnalyticsCharts() {
@@ -96,4 +111,3 @@ function destroyAnalyticsCharts() {
     }
   });
 }
-
