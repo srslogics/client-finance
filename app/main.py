@@ -60,14 +60,65 @@ def build_ledger(txns):
         elif txn.type == "PAYMENT":
             balance -= amount
 
+        txn_type = txn.type
+        if txn.type == "PAYMENT" and txn.category:
+            txn_type = f"PAYMENT {txn.category}"
+
         ledger.append({
             "date": str(txn.date),
-            "type": txn.type,
+            "type": txn_type,
+            "payment_mode": txn.payment_mode or "NA",
             "amount": float(amount),
             "balance": float(balance)
         })
 
     return balance, ledger
+
+
+def get_or_create_party(db: Session, party_name: str, party_type: str, seen_aliases: dict):
+    normalized = normalize_party_name(party_name)
+
+    if normalized in seen_aliases:
+        return seen_aliases[normalized]
+
+    alias = db.query(models.PartyAlias).filter_by(
+        normalized_alias=normalized
+    ).first()
+
+    if alias:
+        party_id = alias.party_id
+    else:
+        party = models.Party(
+            name=party_name,
+            normalized_name=normalized,
+            type=party_type
+        )
+        db.add(party)
+        db.flush()
+
+        alias = models.PartyAlias(
+            alias=party_name,
+            normalized_alias=normalized,
+            party_id=party.id
+        )
+        db.add(alias)
+
+        party_id = party.id
+
+    seen_aliases[normalized] = party_id
+    return party_id
+
+
+def normalize_payment_direction(value: str):
+    normalized = str(value).strip().upper()
+
+    if normalized in ["RECEIVED", "RECEIVE", "FROM", "IN", "INCOMING", "CREDIT"]:
+        return "RECEIVED"
+
+    if normalized in ["PAID", "PAY", "TO", "OUT", "OUTGOING", "DEBIT"]:
+        return "PAID"
+
+    return None
 
 @app.post("/upload/vendor")
 def upload_vendor(file: UploadFile = File(...), db: Session = Depends(get_db)):
@@ -140,37 +191,8 @@ def upload_vendor(file: UploadFile = File(...), db: Session = Depends(get_db)):
             if weight <= 0 or rate <= 0:
                 continue
 
-            normalized = normalize_party_name(party_name)
-
             # --- Party mapping ---
-            if normalized in seen_aliases:
-                party_id = seen_aliases[normalized]
-            else:
-                alias = db.query(models.PartyAlias).filter_by(
-                    normalized_alias=normalized
-                ).first()
-
-                if alias:
-                    party_id = alias.party_id
-                else:
-                    party = models.Party(
-                        name=party_name,
-                        normalized_name=normalized,
-                        type="VENDOR"
-                    )
-                    db.add(party)
-                    db.flush()
-
-                    alias = models.PartyAlias(
-                        alias=party_name,
-                        normalized_alias=normalized,
-                        party_id=party.id
-                    )
-                    db.add(alias)
-
-                    party_id = party.id
-
-                seen_aliases[normalized] = party_id
+            party_id = get_or_create_party(db, party_name, "VENDOR", seen_aliases)
 
             # --- Duplicate check ---
             existing_txn = db.query(models.Transaction).filter_by(
@@ -301,37 +323,8 @@ def upload_dealer(file: UploadFile = File(...), db: Session = Depends(get_db)):
             if weight <= 0 or rate <= 0:
                 continue
 
-            normalized = normalize_party_name(party_name)
-
             # --- Party mapping ---
-            if normalized in seen_aliases:
-                party_id = seen_aliases[normalized]
-            else:
-                alias = db.query(models.PartyAlias).filter_by(
-                    normalized_alias=normalized
-                ).first()
-
-                if alias:
-                    party_id = alias.party_id
-                else:
-                    party = models.Party(
-                        name=party_name,
-                        normalized_name=normalized,
-                        type="DEALER"
-                    )
-                    db.add(party)
-                    db.flush()
-
-                    alias = models.PartyAlias(
-                        alias=party_name,
-                        normalized_alias=normalized,
-                        party_id=party.id
-                    )
-                    db.add(alias)
-
-                    party_id = party.id
-
-                seen_aliases[normalized] = party_id
+            party_id = get_or_create_party(db, party_name, "DEALER", seen_aliases)
 
             # --- Duplicate check (CORRECT TYPE) ---
             existing_txn = db.query(models.Transaction).filter_by(
@@ -371,6 +364,117 @@ def upload_dealer(file: UploadFile = File(...), db: Session = Depends(get_db)):
         file_record = models.UploadedFile(
             file_hash=file_hash,
             file_type="dealer"
+        )
+        db.add(file_record)
+        db.commit()
+
+    except Exception as e:
+        db.rollback()
+        return {"error": "Transaction failed", "details": str(e)}
+
+    return {
+        "status": "success",
+        "rows_inserted": inserted,
+        "errors": errors[:10]
+    }
+
+
+@app.post("/upload/payment")
+def upload_payment(file: UploadFile = File(...), db: Session = Depends(get_db)):
+
+    import io
+    import hashlib
+
+    filename = (file.filename or "").lower()
+    contents = file.file.read()
+    file_hash = hashlib.sha256(contents).hexdigest()
+
+    existing_file = db.query(models.UploadedFile).filter_by(file_hash=file_hash).first()
+    if existing_file:
+        return {"error": "File already uploaded"}
+
+    try:
+        if filename.endswith(".xlsx"):
+            df = pd.read_excel(io.BytesIO(contents), engine="openpyxl")
+        elif filename.endswith(".xls"):
+            df = pd.read_excel(io.BytesIO(contents), engine="xlrd")
+        elif filename.endswith(".csv"):
+            df = pd.read_csv(io.BytesIO(contents), encoding="utf-8")
+        else:
+            return {"error": "Unsupported file format"}
+    except Exception as e:
+        return {"error": f"File read failed: {str(e)}"}
+
+    if df.empty:
+        return {"error": "File is empty"}
+
+    df.columns = df.columns.str.strip().str.upper()
+
+    required_cols = ["DATE", "PARTY", "AMOUNT", "PAYMENT_MODE", "DIRECTION"]
+    for col in required_cols:
+        if col not in df.columns:
+            return {"error": f"Missing column: {col}"}
+
+    try:
+        df["AMOUNT"] = df["AMOUNT"].astype(float)
+    except Exception:
+        return {"error": "Invalid amount values"}
+
+    inserted = 0
+    errors = []
+    seen_aliases = {}
+    seen_payments = set()
+
+    for _, row in df.iterrows():
+        try:
+            if pd.isna(row["PARTY"]) or pd.isna(row["AMOUNT"]) or pd.isna(row["DIRECTION"]):
+                continue
+
+            party_name = str(row["PARTY"]).strip()
+            amount = Decimal(str(float(row["AMOUNT"])))
+            target_date = pd.to_datetime(row["DATE"], dayfirst=True).date()
+            payment_mode = str(row["PAYMENT_MODE"]).strip() if not pd.isna(row["PAYMENT_MODE"]) else "NA"
+            direction = normalize_payment_direction(row["DIRECTION"])
+
+            if not party_name or amount <= 0 or not direction:
+                continue
+
+            party_id = get_or_create_party(db, party_name, "BOTH", seen_aliases)
+
+            existing_payment = db.query(models.Transaction).filter_by(
+                date=target_date,
+                party_id=party_id,
+                type="PAYMENT",
+                amount=amount,
+                payment_mode=payment_mode,
+                category=direction
+            ).first()
+
+            payment_key = (target_date, party_id, amount, payment_mode, direction)
+            if existing_payment or payment_key in seen_payments:
+                continue
+
+            txn = models.Transaction(
+                date=target_date,
+                party_id=party_id,
+                type="PAYMENT",
+                category=direction,
+                amount=amount,
+                payment_mode=payment_mode
+            )
+
+            db.add(txn)
+            seen_payments.add(payment_key)
+            inserted += 1
+
+        except Exception as e:
+            errors.append(str(e))
+            continue
+
+    try:
+        file_record = models.UploadedFile(
+            file_hash=file_hash,
+            file_type="payment"
         )
         db.add(file_record)
         db.commit()
@@ -462,17 +566,34 @@ def process_day(input_date: str, actual_stock: float, db: Session = Depends(get_
 
 
 @app.get("/party/{party_id}/ledger")
-def get_party_ledger(party_id: UUID, db: Session = Depends(get_db)):
+def get_party_ledger(
+    party_id: UUID,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    db: Session = Depends(get_db)
+):
 
     # --- Validate party ---
     party = db.query(models.Party).filter_by(id=party_id).first()
     if not party:
         return {"error": "Party not found"}
 
+    query = db.query(models.Transaction).filter_by(party_id=party_id)
+
+    if start_date:
+        start = parse_input_date(start_date)
+        if not start:
+            return {"error": "Invalid start date"}
+        query = query.filter(models.Transaction.date >= start)
+
+    if end_date:
+        end = parse_input_date(end_date)
+        if not end:
+            return {"error": "Invalid end date"}
+        query = query.filter(models.Transaction.date <= end)
+
     # --- Fetch transactions ---
-    txns = db.query(models.Transaction).filter_by(
-        party_id=party_id
-    ).order_by(models.Transaction.date.asc()).all()
+    txns = query.order_by(models.Transaction.date.asc()).all()
 
     if not txns:
         return {
@@ -529,7 +650,12 @@ def search_party(name: str, db: Session = Depends(get_db)):
 
 
 @app.get("/party/ledger")
-def get_ledger_by_name(name: str, db: Session = Depends(get_db)):
+def get_ledger_by_name(
+    name: str,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    db: Session = Depends(get_db)
+):
     if not name or len(name.strip()) < 2:
         return {"error": "Invalid party name"}
 
@@ -574,9 +700,23 @@ def get_ledger_by_name(name: str, db: Session = Depends(get_db)):
     # --- Step 4: Single match → ledger ---
     party_id = party_ids[0]
 
-    txns = db.query(models.Transaction).filter(
+    query = db.query(models.Transaction).filter(
         models.Transaction.party_id == party_id
-    ).order_by(models.Transaction.date.asc()).all()
+    )
+
+    if start_date:
+        start = parse_input_date(start_date)
+        if not start:
+            return {"error": "Invalid start date"}
+        query = query.filter(models.Transaction.date >= start)
+
+    if end_date:
+        end = parse_input_date(end_date)
+        if not end:
+            return {"error": "Invalid end date"}
+        query = query.filter(models.Transaction.date <= end)
+
+    txns = query.order_by(models.Transaction.date.asc()).all()
 
     if not txns:
         return {

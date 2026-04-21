@@ -63,6 +63,10 @@ async function handleUpload(inputId, endpoint, label) {
     handleUpload("dealerFile", "/upload/dealer", "Dealer file");
   }
 
+  function uploadPayment() {
+    handleUpload("paymentFile", "/upload/payment", "Payment file");
+  }
+
   async function processDay() {
     const date = document.getElementById("processDate").value;
     const stock = document.getElementById("stock").value;
@@ -101,4 +105,3 @@ async function handleUpload(inputId, endpoint, label) {
       btn.style.opacity = disable ? 0.6 : 1;
     });
   }
-

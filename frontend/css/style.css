@@ -219,13 +219,17 @@ input[type="file"] {
   align-items: center;
 }
 
+.search-card input[type="text"] {
+  flex: 1 1 240px;
+}
+
 .table-card {
   overflow-x: auto;
 }
 
 table {
   width: 100%;
-  min-width: 560px;
+  min-width: 650px;
   border-collapse: collapse;
 }
 

@@ -24,7 +24,7 @@ function loadPage(page) {
           <div class="section">
             <h2>Step 1: Upload Vendor Data</h2>
             <div class="upload-box">
-              <input type="file" id="vendorFile">
+              <input type="file" id="vendorFile" accept=".csv,.xls,.xlsx">
               <button onclick="uploadVendor()">Upload</button>
             </div>
           </div>
@@ -32,7 +32,7 @@ function loadPage(page) {
           <div class="section">
             <h2>Step 2: Upload Dealer Data</h2>
             <div class="upload-box">
-              <input type="file" id="dealerFile">
+              <input type="file" id="dealerFile" accept=".csv,.xls,.xlsx">
               <button onclick="uploadDealer()">Upload</button>
             </div>
           </div>
@@ -43,6 +43,14 @@ function loadPage(page) {
               <input type="date" id="processDate">
               <input type="number" id="stock" placeholder="Actual Stock (kg)">
               <button onclick="processDay()">Process</button>
+            </div>
+          </div>
+
+          <div class="section">
+            <h2>Step 4: Upload Payment Data</h2>
+            <div class="upload-box">
+              <input type="file" id="paymentFile" accept=".csv,.xls,.xlsx">
+              <button onclick="uploadPayment()">Upload</button>
             </div>
           </div>
 
@@ -128,7 +136,10 @@ function loadPage(page) {
         <div class="container">
 
           <div class="card search-card">
-            <input type="text" id="party" placeholder="Search party...">
+            <input type="text" id="party" placeholder="Search party..." list="partySuggestions" autocomplete="off" oninput="suggestParties()">
+            <datalist id="partySuggestions"></datalist>
+            <input type="date" id="ledgerStartDate" aria-label="Ledger start date">
+            <input type="date" id="ledgerEndDate" aria-label="Ledger end date">
             <button onclick="searchLedger()">Search</button>
           </div>
 
@@ -145,13 +156,14 @@ function loadPage(page) {
                 <tr>
                   <th>Date</th>
                   <th>Type</th>
+                  <th>Mode</th>
                   <th>Amount</th>
                   <th>Balance</th>
                 </tr>
               </thead>
               <tbody id="ledgerBody">
                 <tr>
-                  <td colspan="4" class="empty">No data yet</td>
+                  <td colspan="5" class="empty">No data yet</td>
                 </tr>
               </tbody>
             </table>
@@ -224,4 +236,3 @@ function loadPage(page) {
       toast.style.display = "none";
     }, 2000);
   }
-

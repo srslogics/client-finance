@@ -49,8 +49,9 @@ class UploadedFile(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     file_hash = Column(String, unique=True)
-    file_type = Column(String)  # vendor / dealer
+    file_type = Column(String)  # vendor / dealer / payment
     created_at = Column(TIMESTAMP, server_default=func.now())
+
 
 class DailyStock(Base):
     __tablename__ = "daily_stock"
