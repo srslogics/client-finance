@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from fastapi import FastAPI
 from app.db import engine, Base
 from fastapi import UploadFile, File, Depends
@@ -5,9 +7,7 @@ import pandas as pd
 from sqlalchemy.orm import Session
 from app.db import SessionLocal
 from app import models
-from datetime import datetime
-from sqlalchemy import func
-from datetime import date
+from sqlalchemy import case, func
 from decimal import Decimal
 import uvicorn
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,7 +27,7 @@ def get_db():
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # for now
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -36,17 +36,50 @@ app.add_middleware(
 def root():
     return {"message": "Backend running"}
 
+
+def normalize_party_name(name: str) -> str:
+    return name.lower().replace(" ", "").replace(".", "")
+
+
+def parse_input_date(value: str):
+    try:
+        return pd.to_datetime(value).date()
+    except Exception:
+        return None
+
+
+def build_ledger(txns):
+    balance = Decimal("0")
+    ledger = []
+
+    for txn in txns:
+        amount = Decimal(txn.amount or 0)
+
+        if txn.type in ["SALE", "PURCHASE"]:
+            balance += amount
+        elif txn.type == "PAYMENT":
+            balance -= amount
+
+        ledger.append({
+            "date": str(txn.date),
+            "type": txn.type,
+            "amount": float(amount),
+            "balance": float(balance)
+        })
+
+    return balance, ledger
+
 @app.post("/upload/vendor")
 def upload_vendor(file: UploadFile = File(...), db: Session = Depends(get_db)):
 
     import io
     import hashlib
 
-    filename = file.filename.lower()
+    filename = (file.filename or "").lower()
     contents = file.file.read()
 
     # --- File hash (duplicate file protection) ---
-    file_hash = hashlib.md5(contents).hexdigest()
+    file_hash = hashlib.sha256(contents).hexdigest()
 
     existing_file = db.query(models.UploadedFile).filter_by(file_hash=file_hash).first()
     if existing_file:
@@ -90,6 +123,8 @@ def upload_vendor(file: UploadFile = File(...), db: Session = Depends(get_db)):
 
     inserted = 0
     errors = []
+    seen_aliases = {}
+    seen_transactions = set()
 
     # --- Process rows ---
     for _, row in df.iterrows():
@@ -105,32 +140,37 @@ def upload_vendor(file: UploadFile = File(...), db: Session = Depends(get_db)):
             if weight <= 0 or rate <= 0:
                 continue
 
-            normalized = party_name.lower().replace(" ", "")
+            normalized = normalize_party_name(party_name)
 
             # --- Party mapping ---
-            alias = db.query(models.PartyAlias).filter_by(
-                normalized_alias=normalized
-            ).first()
-
-            if alias:
-                party_id = alias.party_id
+            if normalized in seen_aliases:
+                party_id = seen_aliases[normalized]
             else:
-                party = models.Party(
-                    name=party_name,
-                    normalized_name=normalized,
-                    type="VENDOR"
-                )
-                db.add(party)
-                db.flush()
+                alias = db.query(models.PartyAlias).filter_by(
+                    normalized_alias=normalized
+                ).first()
 
-                alias = models.PartyAlias(
-                    alias=party_name,
-                    normalized_alias=normalized,
-                    party_id=party.id
-                )
-                db.add(alias)
+                if alias:
+                    party_id = alias.party_id
+                else:
+                    party = models.Party(
+                        name=party_name,
+                        normalized_name=normalized,
+                        type="VENDOR"
+                    )
+                    db.add(party)
+                    db.flush()
 
-                party_id = party.id
+                    alias = models.PartyAlias(
+                        alias=party_name,
+                        normalized_alias=normalized,
+                        party_id=party.id
+                    )
+                    db.add(alias)
+
+                    party_id = party.id
+
+                seen_aliases[normalized] = party_id
 
             # --- Duplicate check ---
             existing_txn = db.query(models.Transaction).filter_by(
@@ -141,7 +181,9 @@ def upload_vendor(file: UploadFile = File(...), db: Session = Depends(get_db)):
                 type="PURCHASE"
             ).first()
 
-            if existing_txn:
+            txn_key = (date, party_id, weight, rate, "PURCHASE")
+
+            if existing_txn or txn_key in seen_transactions:
                 continue
 
             # --- Create transaction ---
@@ -156,6 +198,7 @@ def upload_vendor(file: UploadFile = File(...), db: Session = Depends(get_db)):
             )
 
             db.add(txn)
+            seen_transactions.add(txn_key)
             inserted += 1
 
         except Exception as e:
@@ -164,8 +207,6 @@ def upload_vendor(file: UploadFile = File(...), db: Session = Depends(get_db)):
 
     # --- Final commit (ONLY ONCE) ---
     try:
-        db.commit()
-
         file_record = models.UploadedFile(
             file_hash=file_hash,
             file_type="vendor"
@@ -189,11 +230,11 @@ def upload_dealer(file: UploadFile = File(...), db: Session = Depends(get_db)):
     import io
     import hashlib
 
-    filename = file.filename.lower()
+    filename = (file.filename or "").lower()
     contents = file.file.read()
 
     # --- File hash protection ---
-    file_hash = hashlib.md5(contents).hexdigest()
+    file_hash = hashlib.sha256(contents).hexdigest()
 
     existing_file = db.query(models.UploadedFile).filter_by(file_hash=file_hash).first()
     if existing_file:
@@ -237,6 +278,8 @@ def upload_dealer(file: UploadFile = File(...), db: Session = Depends(get_db)):
 
     inserted = 0
     errors = []
+    seen_aliases = {}
+    seen_transactions = set()
 
     # --- Process rows ---
     for _, row in df.iterrows():
@@ -258,32 +301,37 @@ def upload_dealer(file: UploadFile = File(...), db: Session = Depends(get_db)):
             if weight <= 0 or rate <= 0:
                 continue
 
-            normalized = party_name.lower().replace(" ", "")
+            normalized = normalize_party_name(party_name)
 
             # --- Party mapping ---
-            alias = db.query(models.PartyAlias).filter_by(
-                normalized_alias=normalized
-            ).first()
-
-            if alias:
-                party_id = alias.party_id
+            if normalized in seen_aliases:
+                party_id = seen_aliases[normalized]
             else:
-                party = models.Party(
-                    name=party_name,
-                    normalized_name=normalized,
-                    type="DEALER"
-                )
-                db.add(party)
-                db.flush()
+                alias = db.query(models.PartyAlias).filter_by(
+                    normalized_alias=normalized
+                ).first()
 
-                alias = models.PartyAlias(
-                    alias=party_name,
-                    normalized_alias=normalized,
-                    party_id=party.id
-                )
-                db.add(alias)
+                if alias:
+                    party_id = alias.party_id
+                else:
+                    party = models.Party(
+                        name=party_name,
+                        normalized_name=normalized,
+                        type="DEALER"
+                    )
+                    db.add(party)
+                    db.flush()
 
-                party_id = party.id
+                    alias = models.PartyAlias(
+                        alias=party_name,
+                        normalized_alias=normalized,
+                        party_id=party.id
+                    )
+                    db.add(alias)
+
+                    party_id = party.id
+
+                seen_aliases[normalized] = party_id
 
             # --- Duplicate check (CORRECT TYPE) ---
             existing_txn = db.query(models.Transaction).filter_by(
@@ -294,7 +342,9 @@ def upload_dealer(file: UploadFile = File(...), db: Session = Depends(get_db)):
                 type="SALE"
             ).first()
 
-            if existing_txn:
+            txn_key = (date, party_id, weight, rate, "SALE")
+
+            if existing_txn or txn_key in seen_transactions:
                 continue
 
             # --- Create SALE transaction ---
@@ -309,6 +359,7 @@ def upload_dealer(file: UploadFile = File(...), db: Session = Depends(get_db)):
             )
 
             db.add(txn)
+            seen_transactions.add(txn_key)
             inserted += 1
 
         except Exception as e:
@@ -317,8 +368,6 @@ def upload_dealer(file: UploadFile = File(...), db: Session = Depends(get_db)):
 
     # --- Final commit ---
     try:
-        db.commit()
-
         file_record = models.UploadedFile(
             file_hash=file_hash,
             file_type="dealer"
@@ -340,10 +389,8 @@ def upload_dealer(file: UploadFile = File(...), db: Session = Depends(get_db)):
 @app.post("/process-day")
 def process_day(input_date: str, actual_stock: float, db: Session = Depends(get_db)):
 
-    try:
-        # --- Parse date ---
-        target_date = pd.to_datetime(input_date).date()
-    except:
+    target_date = parse_input_date(input_date)
+    if not target_date:
         return {"error": "Invalid date format"}
 
     # --- Validate stock ---
@@ -415,9 +462,7 @@ def process_day(input_date: str, actual_stock: float, db: Session = Depends(get_
 
 
 @app.get("/party/{party_id}/ledger")
-def get_party_ledger(party_id: str, db: Session = Depends(get_db)):
-
-    from decimal import Decimal
+def get_party_ledger(party_id: UUID, db: Session = Depends(get_db)):
 
     # --- Validate party ---
     party = db.query(models.Party).filter_by(id=party_id).first()
@@ -425,8 +470,8 @@ def get_party_ledger(party_id: str, db: Session = Depends(get_db)):
         return {"error": "Party not found"}
 
     # --- Fetch transactions ---
-    txns = db.query(models.Transaction).filter(
-        models.Transaction.party_id == party_id
+    txns = db.query(models.Transaction).filter_by(
+        party_id=party_id
     ).order_by(models.Transaction.date.asc()).all()
 
     if not txns:
@@ -437,23 +482,7 @@ def get_party_ledger(party_id: str, db: Session = Depends(get_db)):
             "ledger": []
         }
 
-    balance = Decimal("0")
-    ledger = []
-
-    for txn in txns:
-        amount = Decimal(txn.amount or 0)
-
-        if txn.type in ["SALE", "PURCHASE"]:
-            balance += amount
-        elif txn.type == "PAYMENT":
-            balance -= amount
-
-        ledger.append({
-            "date": str(txn.date),
-            "type": txn.type,
-            "amount": float(amount),
-            "balance": float(balance)
-        })
+    balance, ledger = build_ledger(txns)
 
     return {
         "party_id": party_id,
@@ -468,7 +497,7 @@ def search_party(name: str, db: Session = Depends(get_db)):
     if not name or len(name.strip()) < 2:
         return {"results": []}
 
-    normalized = name.lower().replace(" ", "").replace(".", "")
+    normalized = normalize_party_name(name)
 
     # --- Search aliases (limited for performance) ---
     aliases = db.query(models.PartyAlias).filter(
@@ -501,13 +530,10 @@ def search_party(name: str, db: Session = Depends(get_db)):
 
 @app.get("/party/ledger")
 def get_ledger_by_name(name: str, db: Session = Depends(get_db)):
-
-    from decimal import Decimal
-
     if not name or len(name.strip()) < 2:
         return {"error": "Invalid party name"}
 
-    normalized = name.lower().replace(" ", "").replace(".", "")
+    normalized = normalize_party_name(name)
 
     # --- Step 1: Try EXACT match first (important) ---
     alias = db.query(models.PartyAlias).filter(
@@ -559,23 +585,7 @@ def get_ledger_by_name(name: str, db: Session = Depends(get_db)):
             "ledger": []
         }
 
-    balance = Decimal("0")
-    ledger = []
-
-    for txn in txns:
-        amount = Decimal(txn.amount or 0)
-
-        if txn.type in ["SALE", "PURCHASE"]:
-            balance += amount
-        elif txn.type == "PAYMENT":
-            balance -= amount
-
-        ledger.append({
-            "date": str(txn.date),
-            "type": txn.type,
-            "amount": float(amount),
-            "balance": float(balance)
-        })
+    balance, ledger = build_ledger(txns)
 
     return {
         "party_name": name,
@@ -587,10 +597,8 @@ def get_ledger_by_name(name: str, db: Session = Depends(get_db)):
 @app.get("/dashboard")
 def get_dashboard(date: str, db: Session = Depends(get_db)):
 
-    try:
-        # --- Parse date ---
-        target_date = pd.to_datetime(date).date()
-    except:
+    target_date = parse_input_date(date)
+    if not target_date:
         return {"error": "Invalid date format"}
 
     try:
@@ -612,8 +620,6 @@ def get_dashboard(date: str, db: Session = Depends(get_db)):
         ).first()
 
         # --- Total outstanding ---
-        from sqlalchemy import case
-
         total_outstanding = db.query(
             func.sum(
                 case(
@@ -647,9 +653,6 @@ def get_dashboard(date: str, db: Session = Depends(get_db)):
 
 @app.get("/top-debtors")
 def top_debtors(db: Session = Depends(get_db)):
-
-    from sqlalchemy import case
-
     # --- DB aggregation (efficient) ---
     results = db.query(
         models.Transaction.party_id,
@@ -686,10 +689,10 @@ def top_debtors(db: Session = Depends(get_db)):
 @app.get("/analytics/trend")
 def get_trend(start_date: str, end_date: str, db: Session = Depends(get_db)):
 
-    from datetime import datetime
-
-    start = datetime.strptime(start_date, "%Y-%m-%d").date()
-    end = datetime.strptime(end_date, "%Y-%m-%d").date()
+    start = parse_input_date(start_date)
+    end = parse_input_date(end_date)
+    if not start or not end:
+        return {"error": "Invalid date format"}
 
     results = db.query(
         models.Transaction.date,
@@ -721,10 +724,10 @@ def get_trend(start_date: str, end_date: str, db: Session = Depends(get_db)):
 @app.get("/analytics/leakage")
 def leakage_trend(start_date: str, end_date: str, db: Session = Depends(get_db)):
 
-    from datetime import datetime
-
-    start = datetime.strptime(start_date, "%Y-%m-%d").date()
-    end = datetime.strptime(end_date, "%Y-%m-%d").date()
+    start = parse_input_date(start_date)
+    end = parse_input_date(end_date)
+    if not start or not end:
+        return {"error": "Invalid date format"}
 
     rows = db.query(models.DailyStock).filter(
         models.DailyStock.date.between(start, end)

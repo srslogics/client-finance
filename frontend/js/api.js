@@ -1,4 +1,9 @@
-const BASE_URL = "https://stockpilot-backend-bvq9.onrender.com";
+const DEFAULT_BASE_URL = "https://stockpilot-backend-bvq9.onrender.com";
+const BASE_URL = (
+  window.STOCKPILOT_API_URL ||
+  localStorage.getItem("STOCKPILOT_API_URL") ||
+  DEFAULT_BASE_URL
+).replace(/\/$/, "");
 
 async function apiCall(url, method = "GET", body = null) {
     const options = {
@@ -12,9 +17,15 @@ async function apiCall(url, method = "GET", body = null) {
     const res = await fetch(BASE_URL + url, options);
   
     if (!res.ok) {
-      throw new Error("API error");
+      throw new Error(`API error: ${res.status}`);
     }
   
-    return await res.json();
+    const data = await res.json();
+
+    if (data && data.error) {
+      console.warn("API returned an error:", data.error);
+    }
+
+    return data;
   }
   

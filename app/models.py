@@ -1,6 +1,5 @@
 import uuid
-from sqlalchemy import UniqueConstraint
-from sqlalchemy import Column, String, Date, Numeric, ForeignKey, TIMESTAMP
+from sqlalchemy import Column, String, Date, Numeric, ForeignKey, TIMESTAMP, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from app.db import Base
@@ -41,8 +40,9 @@ class Transaction(Base):
     created_at = Column(TIMESTAMP, server_default=func.now())
 
     __table_args__ = (
-        UniqueConstraint('date', 'party_id', 'weight', 'rate', 'type', name='unique_txn'),
+        UniqueConstraint("date", "party_id", "weight", "rate", "type", name="unique_txn"),
     )
+
 
 class UploadedFile(Base):
     __tablename__ = "uploaded_files"
@@ -51,8 +51,6 @@ class UploadedFile(Base):
     file_hash = Column(String, unique=True)
     file_type = Column(String)  # vendor / dealer
     created_at = Column(TIMESTAMP, server_default=func.now())
-
-
 
 class DailyStock(Base):
     __tablename__ = "daily_stock"

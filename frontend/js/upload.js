@@ -1,51 +1,58 @@
 async function handleUpload(inputId, endpoint, label) {
     const fileInput = document.getElementById(inputId);
     const file = fileInput.files[0];
-  
+
     if (!file) {
       showToast("Select a file");
       return;
     }
-  
+
     // --- Basic validation
-    const allowed = ["application/vnd.ms-excel",
-                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                     "text/csv"];
-  
-    if (!allowed.includes(file.type)) {
+    const allowedTypes = [
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "text/csv",
+      "application/csv",
+      "text/plain",
+      ""
+    ];
+    const allowedExtensions = [".csv", ".xls", ".xlsx"];
+    const fileName = file.name.toLowerCase();
+
+    if (!allowedTypes.includes(file.type) && !allowedExtensions.some(ext => fileName.endsWith(ext))) {
       showToast("Invalid file type");
       return;
     }
-  
+
     if (file.size > 5 * 1024 * 1024) {
       showToast("File too large (max 5MB)");
       return;
     }
-  
+
     showToast(`Uploading ${label}...`);
-  
+
     const formData = new FormData();
     formData.append("file", file);
-  
+
     // 🔥 Disable button during upload
     toggleButtons(true);
-  
+
     try {
       const data = await apiCall(endpoint, "POST", formData);
-  
+
       if (data.error) {
         showToast(data.error);
       } else {
         showToast(`${label} uploaded: ${data.rows_inserted} rows ✅`);
         fileInput.value = ""; // reset input
       }
-  
+
     } catch (e) {
       console.error(e);
       showToast("Upload failed");
+    } finally {
+      toggleButtons(false);
     }
-  
-    toggleButtons(false);
   }
 
   function uploadVendor() {
@@ -59,33 +66,33 @@ async function handleUpload(inputId, endpoint, label) {
   async function processDay() {
     const date = document.getElementById("processDate").value;
     const stock = document.getElementById("stock").value;
-  
+
     if (!date || !stock) {
       showToast("Enter date and stock");
       return;
     }
-  
+
     showToast("Processing day...");
     toggleButtons(true);
-  
+
     try {
       const data = await apiCall(
-        `/process-day?input_date=${date}&actual_stock=${stock}`,
+        `/process-day?input_date=${encodeURIComponent(date)}&actual_stock=${encodeURIComponent(stock)}`,
         "POST"
       );
-  
+
       if (data.error) {
         showToast(data.error);
       } else {
         showToast(`Processed. Leakage: ${data.leakage} kg`);
       }
-  
+
     } catch (e) {
       console.error(e);
       showToast("Processing failed");
+    } finally {
+      toggleButtons(false);
     }
-  
-    toggleButtons(false);
   }
 
   function toggleButtons(disable) {
@@ -94,4 +101,4 @@ async function handleUpload(inputId, endpoint, label) {
       btn.style.opacity = disable ? 0.6 : 1;
     });
   }
-  
+

@@ -10,6 +10,8 @@
   <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/1046/1046784.png">
 
   <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 
   <!-- Styles -->
@@ -24,19 +26,19 @@
 <div class="app">
 
   <!-- Sidebar -->
-  <div class="sidebar">
-    <h2>📊 StockPilot</h2>
+  <aside class="sidebar">
+    <h2>StockPilot</h2>
 
-    <div class="menu">
-      <button id="menu-dashboard" onclick="loadPage('dashboard')">Dashboard</button>
-      <button id="menu-upload" onclick="loadPage('upload')">Upload</button>
-      <button id="menu-analytics" onclick="loadPage('analytics')">Analytics</button>
-      <button id="menu-ledger" onclick="loadPage('ledger')">Ledger</button>
-    </div>
-  </div>
+    <nav class="menu" aria-label="Primary navigation">
+      <button type="button" id="menu-dashboard" onclick="loadPage('dashboard')">Dashboard</button>
+      <button type="button" id="menu-upload" onclick="loadPage('upload')">Upload</button>
+      <button type="button" id="menu-analytics" onclick="loadPage('analytics')">Analytics</button>
+      <button type="button" id="menu-ledger" onclick="loadPage('ledger')">Ledger</button>
+    </nav>
+  </aside>
 
   <!-- Main -->
-  <div class="main">
+  <main class="main">
 
     <!-- Topbar -->
     <div class="topbar">
@@ -56,12 +58,12 @@
       </div>
     </div>
 
-  </div>
+  </main>
 
 </div>
 
 <!-- Toast -->
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <!-- Scripts (order matters) -->
 <script src="js/api.js"></script>

@@ -1,4 +1,8 @@
-let trendChart, leakageChart, debtorChart;
+const analyticsCharts = {
+  trend: null,
+  leakage: null,
+  debtor: null
+};
 
 async function loadAnalytics() {
 
@@ -35,18 +39,16 @@ function renderAnalyticsCharts(trend, leakage, debtors) {
       console.warn("No trend data");
       return;
     }
-  
+
     const dates = trend.map(d => d.date);
     const sales = trend.map(d => d.sales || 0);
     const purchase = trend.map(d => d.purchase || 0);
-  
+
     // 🔥 Destroy old charts
-    if (trendChart) trendChart.destroy();
-    if (leakageChart) leakageChart.destroy();
-    if (debtorChart) debtorChart.destroy();
-  
+    destroyAnalyticsCharts();
+
     // --- Trend Chart ---
-    trendChart = new Chart(document.getElementById("trendChart"), {
+    analyticsCharts.trend = new Chart(document.getElementById("trendChart"), {
       type: "line",
       data: {
         labels: dates,
@@ -56,10 +58,10 @@ function renderAnalyticsCharts(trend, leakage, debtors) {
         ]
       }
     });
-  
+
     // --- Leakage Chart ---
     if (leakage && leakage.length > 0) {
-      leakageChart = new Chart(document.getElementById("leakageChart"), {
+      analyticsCharts.leakage = new Chart(document.getElementById("leakageChart"), {
         type: "line",
         data: {
           labels: leakage.map(d => d.date),
@@ -70,10 +72,10 @@ function renderAnalyticsCharts(trend, leakage, debtors) {
         }
       });
     }
-  
+
     // --- Debtors Chart ---
     if (debtors && debtors.top_debtors?.length > 0) {
-      debtorChart = new Chart(document.getElementById("debtorChart"), {
+      analyticsCharts.debtor = new Chart(document.getElementById("debtorChart"), {
         type: "bar",
         data: {
           labels: debtors.top_debtors.map(d => d.party_name),
@@ -85,4 +87,13 @@ function renderAnalyticsCharts(trend, leakage, debtors) {
       });
     }
   }
-  
+
+function destroyAnalyticsCharts() {
+  Object.keys(analyticsCharts).forEach(key => {
+    if (analyticsCharts[key]) {
+      analyticsCharts[key].destroy();
+      analyticsCharts[key] = null;
+    }
+  });
+}
+

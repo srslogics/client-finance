@@ -1,4 +1,8 @@
-let trendChart, profitChart, leakageChart;
+const dashboardCharts = {
+  trend: null,
+  profit: null,
+  leakage: null
+};
 
 async function loadDashboard() {
     const date = document.getElementById("dashboardDate").value;
@@ -47,18 +51,16 @@ function renderCharts(trend, leakage) {
       console.warn("No trend data");
       return;
     }
-  
+
     const dates = trend.map(d => d.date);
     const sales = trend.map(d => d.sales || 0);
     const purchase = trend.map(d => d.purchase || 0);
     const profit = trend.map(d => (d.sales || 0) - (d.purchase || 0));
-  
+
     // 🔥 Destroy old charts
-    if (trendChart) trendChart.destroy();
-    if (profitChart) profitChart.destroy();
-    if (leakageChart) leakageChart.destroy();
-  
-    trendChart = new Chart(document.getElementById("trendChart"), {
+    destroyDashboardCharts();
+
+    dashboardCharts.trend = new Chart(document.getElementById("trendChart"), {
       type: "line",
       data: {
         labels: dates,
@@ -68,8 +70,8 @@ function renderCharts(trend, leakage) {
         ]
       }
     });
-  
-    profitChart = new Chart(document.getElementById("profitChart"), {
+
+    dashboardCharts.profit = new Chart(document.getElementById("profitChart"), {
       type: "line",
       data: {
         labels: dates,
@@ -78,9 +80,9 @@ function renderCharts(trend, leakage) {
         ]
       }
     });
-  
+
     if (leakage && leakage.length > 0) {
-      leakageChart = new Chart(document.getElementById("leakageChart"), {
+      dashboardCharts.leakage = new Chart(document.getElementById("leakageChart"), {
         type: "line",
         data: {
           labels: leakage.map(d => d.date),
@@ -91,42 +93,52 @@ function renderCharts(trend, leakage) {
       });
     }
   }
+
+  function destroyDashboardCharts() {
+    Object.keys(dashboardCharts).forEach(key => {
+      if (dashboardCharts[key]) {
+        dashboardCharts[key].destroy();
+        dashboardCharts[key] = null;
+      }
+    });
+  }
+
   function generateInsights(today, trend) {
 
     const list = document.getElementById("insightsList");
     if (!list) return;
-  
+
     list.innerHTML = "";
-  
+
     if (!trend || trend.length < 2) {
       addInsight("Not enough data for insights");
       return;
     }
-  
+
     const last = trend[trend.length - 1];
     const prev = trend[trend.length - 2];
-  
+
     const profitToday = (last.sales || 0) - (last.purchase || 0);
     const profitPrev = (prev.sales || 0) - (prev.purchase || 0);
-  
+
     if (profitToday > profitPrev) {
       addInsight("Profit increased vs yesterday 📈");
     } else {
       addInsight("Profit decreased vs yesterday ⚠️");
     }
-  
+
     if ((today.leakage || 0) > 50) {
       addInsight("High leakage detected 🚨");
     }
-  
+
     if ((today.total_outstanding || 0) > 100000) {
       addInsight("Outstanding is high — cash risk ⚠️");
     }
   }
-  
+
   function addInsight(text) {
     const li = document.createElement("li");
     li.innerText = text;
     document.getElementById("insightsList").appendChild(li);
   }
-    
+
