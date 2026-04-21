@@ -16,42 +16,22 @@ function loadPage(page) {
 
     // --- Upload Page
     if (page === "upload") {
-      title.innerText = "Upload & Process";
+      title.innerText = "Daily Uploads";
 
       content.innerHTML = `
         <div class="container">
 
           <div class="section">
-            <h2>Download Templates</h2>
+            <h2>Daily Templates</h2>
             <div class="upload-box">
               <button onclick="downloadTemplate('dealer')">Dealer Purchase</button>
               <button onclick="downloadTemplate('vendor')">Vendor Sales</button>
               <button onclick="downloadTemplate('payment')">Payment</button>
-              <button onclick="downloadTemplate('opening-balance')">Opening Balance</button>
-              <button onclick="downloadTemplate('opening-stock')">Opening Stock</button>
             </div>
           </div>
 
           <div class="section">
-            <h2>Step 1: Upload Opening Balance</h2>
-            <div class="upload-box">
-              <input type="file" id="openingBalanceFile" accept=".csv,.xls,.xlsx">
-              <button onclick="previewOpeningBalance()">Preview</button>
-              <button onclick="uploadOpeningBalance()">Upload</button>
-            </div>
-          </div>
-
-          <div class="section">
-            <h2>Step 2: Upload Opening Stock</h2>
-            <div class="upload-box">
-              <input type="file" id="openingStockFile" accept=".csv,.xls,.xlsx">
-              <button onclick="previewOpeningStock()">Preview</button>
-              <button onclick="uploadOpeningStock()">Upload</button>
-            </div>
-          </div>
-
-          <div class="section">
-            <h2>Step 3: Upload Dealer Purchase Data</h2>
+            <h2>1. Dealer Purchase File</h2>
             <div class="upload-box">
               <input type="file" id="dealerFile" accept=".csv,.xls,.xlsx">
               <button onclick="previewDealer()">Preview</button>
@@ -60,7 +40,7 @@ function loadPage(page) {
           </div>
 
           <div class="section">
-            <h2>Step 4: Upload Vendor Sales Data</h2>
+            <h2>2. Vendor Sales File</h2>
             <div class="upload-box">
               <input type="file" id="vendorFile" accept=".csv,.xls,.xlsx">
               <button onclick="previewVendor()">Preview</button>
@@ -69,7 +49,7 @@ function loadPage(page) {
           </div>
 
           <div class="section">
-            <h2>Step 5: Upload Payment Data</h2>
+            <h2>3. Payment File</h2>
             <div class="upload-box">
               <input type="file" id="paymentFile" accept=".csv,.xls,.xlsx">
               <button onclick="previewPayment()">Preview</button>
@@ -78,11 +58,37 @@ function loadPage(page) {
           </div>
 
           <div class="section">
-            <h2>Step 6: Process Day</h2>
+            <h2>Process Day</h2>
             <div class="upload-box">
               <input type="date" id="processDate">
               <input type="number" id="stock" placeholder="Actual Stock (kg)">
               <button onclick="processDay()">Process</button>
+            </div>
+          </div>
+
+          <div class="section">
+            <h2>Initial Setup Templates</h2>
+            <div class="upload-box">
+              <button onclick="downloadTemplate('opening-balance')">Opening Balance</button>
+              <button onclick="downloadTemplate('opening-stock')">Opening Stock</button>
+            </div>
+          </div>
+
+          <div class="section">
+            <h2>Opening Balance</h2>
+            <div class="upload-box">
+              <input type="file" id="openingBalanceFile" accept=".csv,.xls,.xlsx">
+              <button onclick="previewOpeningBalance()">Preview</button>
+              <button onclick="uploadOpeningBalance()">Upload</button>
+            </div>
+          </div>
+
+          <div class="section">
+            <h2>Opening Stock</h2>
+            <div class="upload-box">
+              <input type="file" id="openingStockFile" accept=".csv,.xls,.xlsx">
+              <button onclick="previewOpeningStock()">Preview</button>
+              <button onclick="uploadOpeningStock()">Upload</button>
             </div>
           </div>
 
