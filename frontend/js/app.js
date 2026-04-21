@@ -59,9 +59,17 @@ function loadPage(page) {
 
           <div class="section">
             <h2>Process Day</h2>
-            <div class="upload-box">
+            <div class="upload-box process-day-controls">
               <input type="date" id="processDate">
-              <input type="number" id="stock" placeholder="Actual Stock (kg)">
+            </div>
+            <div id="actualStockRows" class="stock-rows">
+              <div class="upload-box actual-stock-row">
+                <input type="text" class="actualItem" placeholder="Hen type">
+                <input type="number" class="actualWeight" placeholder="Actual stock (kg)" min="0" step="0.01">
+              </div>
+            </div>
+            <div class="upload-box">
+              <button onclick="addActualStockRow()">Add Hen Type</button>
               <button onclick="processDay()">Process</button>
             </div>
           </div>
@@ -174,11 +182,13 @@ function loadPage(page) {
                   <th>Opening</th>
                   <th>Purchase</th>
                   <th>Sales</th>
-                  <th>Closing</th>
+                  <th>Expected</th>
+                  <th>Actual</th>
+                  <th>Leakage</th>
                 </tr>
               </thead>
               <tbody id="inventoryBody">
-                <tr><td colspan="5" class="empty">No data yet</td></tr>
+                <tr><td colspan="7" class="empty">No data yet</td></tr>
               </tbody>
             </table>
           </div>

@@ -5,9 +5,10 @@ const BASE_URL = (
   DEFAULT_BASE_URL
 ).replace(/\/$/, "");
 
-async function apiCall(url, method = "GET", body = null) {
+async function apiCall(url, method = "GET", body = null, headers = {}) {
     const options = {
       method: method,
+      headers: headers,
     };
   
     if (body) {

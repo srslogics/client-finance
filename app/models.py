@@ -79,3 +79,22 @@ class DailyStock(Base):
     expected_closing_weight = Column(Numeric)
     actual_closing_weight = Column(Numeric)
     leakage = Column(Numeric)
+
+
+class DailyItemStock(Base):
+    __tablename__ = "daily_item_stock"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    date = Column(Date, nullable=False)
+    item_type = Column(String, nullable=False)
+    opening_weight = Column(Numeric)
+    purchase_weight = Column(Numeric)
+    sales_weight = Column(Numeric)
+    expected_closing_weight = Column(Numeric)
+    actual_closing_weight = Column(Numeric)
+    leakage = Column(Numeric)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("date", "item_type", name="unique_daily_item_stock"),
+    )

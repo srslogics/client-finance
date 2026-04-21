@@ -223,6 +223,12 @@ input[type="file"] {
   flex: 1 1 240px;
 }
 
+.stock-rows {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
 .table-card {
   overflow-x: auto;
 }

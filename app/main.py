@@ -32,6 +32,21 @@ def ensure_database_schema():
                 CONSTRAINT unique_item_opening_stock UNIQUE (date, item_type)
             )
         """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS daily_item_stock (
+                id UUID PRIMARY KEY,
+                date DATE NOT NULL,
+                item_type VARCHAR NOT NULL,
+                opening_weight NUMERIC,
+                purchase_weight NUMERIC,
+                sales_weight NUMERIC,
+                expected_closing_weight NUMERIC,
+                actual_closing_weight NUMERIC,
+                leakage NUMERIC,
+                created_at TIMESTAMP DEFAULT now(),
+                CONSTRAINT unique_daily_item_stock UNIQUE (date, item_type)
+            )
+        """))
 
 
 ensure_database_schema()
@@ -1021,6 +1036,109 @@ def process_day(input_date: str, actual_stock: float, db: Session = Depends(get_
     }
 
 
+@app.post("/process-day/items")
+def process_day_items(input_date: str, actual_stock: list[dict], db: Session = Depends(get_db)):
+    target_date = parse_input_date(input_date)
+    if not target_date:
+        return {"error": "Invalid date format"}
+
+    if not actual_stock:
+        return {"error": "Enter actual stock for at least one hen type"}
+
+    normalized_actuals = {}
+    for row in actual_stock:
+        item = str(row.get("item_type", "")).strip()
+        try:
+            actual = Decimal(str(row.get("actual_weight", "")))
+        except Exception:
+            return {"error": f"Invalid actual stock for {item or 'item'}"}
+
+        if not item or actual < 0:
+            return {"error": "Invalid hen type or actual stock"}
+
+        normalized_actuals[item] = actual
+
+    existing = db.query(models.DailyItemStock).filter(
+        models.DailyItemStock.date == target_date,
+        models.DailyItemStock.item_type.in_(list(normalized_actuals.keys()))
+    ).first()
+    if existing:
+        return {"error": "One or more hen types already processed for this day"}
+
+    results = []
+
+    try:
+        for item_type, actual_weight in normalized_actuals.items():
+            prev_stock = db.query(models.DailyItemStock).filter(
+                models.DailyItemStock.item_type == item_type,
+                models.DailyItemStock.date < target_date
+            ).order_by(models.DailyItemStock.date.desc()).first()
+
+            if prev_stock:
+                opening_weight = Decimal(prev_stock.actual_closing_weight or 0)
+            else:
+                opening = db.query(models.ItemOpeningStock).filter(
+                    models.ItemOpeningStock.item_type == item_type,
+                    models.ItemOpeningStock.date <= target_date
+                ).order_by(models.ItemOpeningStock.date.desc()).first()
+                opening_weight = Decimal(opening.opening_weight or 0) if opening else Decimal("0")
+
+            purchase_weight = db.query(func.sum(models.Transaction.weight)).filter(
+                models.Transaction.date == target_date,
+                models.Transaction.item_type == item_type,
+                models.Transaction.type == "PURCHASE"
+            ).scalar() or 0
+
+            sales_weight = db.query(func.sum(models.Transaction.weight)).filter(
+                models.Transaction.date == target_date,
+                models.Transaction.item_type == item_type,
+                models.Transaction.type == "SALE"
+            ).scalar() or 0
+
+            purchase_weight = Decimal(str(purchase_weight))
+            sales_weight = Decimal(str(sales_weight))
+            expected_stock = opening_weight + purchase_weight - sales_weight
+            leakage = expected_stock - actual_weight
+
+            daily = models.DailyItemStock(
+                date=target_date,
+                item_type=item_type,
+                opening_weight=opening_weight,
+                purchase_weight=purchase_weight,
+                sales_weight=sales_weight,
+                expected_closing_weight=expected_stock,
+                actual_closing_weight=actual_weight,
+                leakage=leakage
+            )
+            db.add(daily)
+
+            results.append({
+                "date": str(target_date),
+                "item": item_type,
+                "opening_stock": float(opening_weight),
+                "purchase": float(purchase_weight),
+                "sales": float(sales_weight),
+                "expected_stock": float(expected_stock),
+                "actual_stock": float(actual_weight),
+                "leakage": float(leakage)
+            })
+
+        db.commit()
+
+    except Exception as e:
+        db.rollback()
+        return {"error": "Processing failed", "details": str(e)}
+
+    return {
+        "status": "success",
+        "date": str(target_date),
+        "items": results,
+        "total_expected_stock": sum(row["expected_stock"] for row in results),
+        "total_actual_stock": sum(row["actual_stock"] for row in results),
+        "total_leakage": sum(row["leakage"] for row in results)
+    }
+
+
 @app.get("/party/{party_id}/ledger")
 def get_party_ledger(
     party_id: UUID,
@@ -1406,6 +1524,25 @@ def inventory_by_item(date: str, db: Session = Depends(get_db)):
     result = []
 
     for item in sorted(items):
+        processed = db.query(models.DailyItemStock).filter_by(
+            date=target_date,
+            item_type=item
+        ).first()
+
+        if processed:
+            result.append({
+                "item": item,
+                "opening_date": str(target_date),
+                "opening_weight": float(processed.opening_weight or 0),
+                "purchase_weight": float(processed.purchase_weight or 0),
+                "sales_weight": float(processed.sales_weight or 0),
+                "expected_closing_weight": float(processed.expected_closing_weight or 0),
+                "actual_closing_weight": float(processed.actual_closing_weight or 0),
+                "leakage": float(processed.leakage or 0),
+                "closing_weight": float(processed.actual_closing_weight or 0)
+            })
+            continue
+
         opening = db.query(models.ItemOpeningStock).filter(
             models.ItemOpeningStock.item_type == item,
             models.ItemOpeningStock.date <= target_date
@@ -1433,6 +1570,9 @@ def inventory_by_item(date: str, db: Session = Depends(get_db)):
             "opening_weight": float(opening_weight),
             "purchase_weight": float(purchase_weight),
             "sales_weight": float(sales_weight),
+            "expected_closing_weight": float(closing_weight),
+            "actual_closing_weight": None,
+            "leakage": None,
             "closing_weight": float(closing_weight)
         })
 

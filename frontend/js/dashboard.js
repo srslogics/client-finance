@@ -164,7 +164,7 @@ function renderCharts(trend, leakage) {
     body.innerHTML = "";
 
     if (!rows.length) {
-      body.innerHTML = `<tr><td colspan="5" class="empty">No inventory data</td></tr>`;
+      body.innerHTML = `<tr><td colspan="7" class="empty">No inventory data</td></tr>`;
       return;
     }
 
@@ -174,7 +174,9 @@ function renderCharts(trend, leakage) {
       appendDashboardCell(tr, `${Number(row.opening_weight || 0).toLocaleString()} kg`);
       appendDashboardCell(tr, `${Number(row.purchase_weight || 0).toLocaleString()} kg`);
       appendDashboardCell(tr, `${Number(row.sales_weight || 0).toLocaleString()} kg`);
-      appendDashboardCell(tr, `${Number(row.closing_weight || 0).toLocaleString()} kg`);
+      appendDashboardCell(tr, `${Number(row.expected_closing_weight || row.closing_weight || 0).toLocaleString()} kg`);
+      appendDashboardCell(tr, row.actual_closing_weight === null ? "-" : `${Number(row.actual_closing_weight || 0).toLocaleString()} kg`);
+      appendDashboardCell(tr, row.leakage === null ? "-" : `${Number(row.leakage || 0).toLocaleString()} kg`);
       body.appendChild(tr);
     });
   }
