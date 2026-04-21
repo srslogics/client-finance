@@ -71,6 +71,16 @@ def root():
     return {"message": "Backend running"}
 
 
+@app.get("/healthz")
+def health_check():
+    return {"status": "ok"}
+
+
+@app.head("/healthz")
+def health_check_head():
+    return Response(status_code=200)
+
+
 TEMPLATES = {
     "dealer": "DATE,DEALER,CATEGORY,HEN_TYPE,KGS,RATE_PER_KG,PAYMENT_MODE\n2026-04-21,ABC Supplier,Dealer,Broiler,100,120,Bank\n",
     "vendor": "DATE,VENDOR,HEN_TYPE,KGS,RATE_PER_KG,PAYMENT_MODE\n2026-04-21,XYZ Hotel,Broiler,40,150,Cash\n",
