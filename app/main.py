@@ -1,4 +1,6 @@
 from uuid import UUID
+from io import BytesIO
+from urllib.parse import quote
 
 from fastapi import FastAPI
 from app.db import engine, Base
@@ -200,6 +202,106 @@ def upload_result(inserted, skipped, errors, extra=None):
         result.update(extra)
 
     return result
+
+
+def report_response(rows, columns, filename, file_format, title):
+    if file_format == "excel":
+        output = BytesIO()
+        pd.DataFrame(rows, columns=columns).to_excel(output, index=False, sheet_name="Report")
+        output.seek(0)
+        return Response(
+            content=output.read(),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}.xlsx"}
+        )
+
+    if file_format == "pdf":
+        return Response(
+            content=build_simple_pdf(title, columns, rows),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}.pdf"}
+        )
+
+    return {"error": "Invalid format"}
+
+
+def build_simple_pdf(title, columns, rows):
+    lines = [title, ""]
+    lines.append(" | ".join(columns))
+    lines.append("-" * min(110, max(24, len(lines[-1]))))
+
+    for row in rows:
+        lines.append(" | ".join(str(row.get(column, "")) for column in columns))
+
+    if not rows:
+        lines.append("No records found")
+
+    pages = []
+    chunk_size = 42
+    for index in range(0, len(lines), chunk_size):
+        pages.append(lines[index:index + chunk_size])
+
+    objects = {
+        1: "<< /Type /Catalog /Pages 2 0 R >>",
+        3: "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"
+    }
+    page_refs = []
+    next_ref = 4
+
+    for page in pages:
+        content = ["BT", "/F1 9 Tf", "42 790 Td", "12 TL"]
+        for line in page:
+            content.append(f"({pdf_escape(line[:150])}) Tj")
+            content.append("T*")
+        content.append("ET")
+        stream = "\n".join(content)
+        content_ref = next_ref
+        objects[content_ref] = f"<< /Length {len(stream.encode('latin-1'))} >>\nstream\n{stream}\nendstream"
+        next_ref += 1
+
+        page_ref = next_ref
+        objects[page_ref] = (
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
+            f"/Resources << /Font << /F1 3 0 R >> >> /Contents {content_ref} 0 R >>"
+        )
+        next_ref += 1
+        page_refs.append(page_ref)
+
+    objects[2] = (
+        "<< /Type /Pages /Kids ["
+        + " ".join(f"{ref} 0 R" for ref in page_refs)
+        + f"] /Count {len(page_refs)} >>"
+    )
+
+    pdf = "%PDF-1.4\n"
+    offsets = [0]
+    for index in sorted(objects):
+        value = objects[index]
+        offsets.append(len(pdf.encode("latin-1")))
+        pdf += f"{index} 0 obj\n{value}\nendobj\n"
+
+    xref_offset = len(pdf.encode("latin-1"))
+    max_ref = max(objects)
+    pdf += f"xref\n0 {max_ref + 1}\n0000000000 65535 f \n"
+    for offset in offsets[1:]:
+        pdf += f"{offset:010d} 00000 n \n"
+    pdf += f"trailer\n<< /Size {max_ref + 1} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF"
+    return pdf.encode("latin-1", errors="replace")
+
+
+def pdf_escape(value):
+    return str(value).replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+
+def parse_report_dates(start_date, end_date):
+    start = parse_input_date(start_date) if start_date else None
+    end = parse_input_date(end_date) if end_date else None
+    return start, end
+
+
+def safe_filename(value):
+    cleaned = "".join(char if char.isalnum() or char in ["-", "_"] else "_" for char in value)
+    return quote(cleaned[:120] or "report")
 
 
 def get_or_create_party(db: Session, party_name: str, party_type: str, seen_aliases: dict):
@@ -1369,6 +1471,257 @@ def get_party_detail(name: str, db: Session = Depends(get_db)):
         },
         "ledger": ledger
     }
+
+
+@app.get("/reports/export")
+def export_report(
+    report_type: str,
+    file_format: str = "excel",
+    party: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    date: str | None = None,
+    db: Session = Depends(get_db)
+):
+    report_type = report_type.lower().strip()
+    file_format = file_format.lower().strip()
+    start, end = parse_report_dates(start_date, end_date)
+
+    if (start_date and not start) or (end_date and not end):
+        return {"error": "Invalid date format"}
+
+    if report_type == "ledger":
+        if not party or len(party.strip()) < 2:
+            return {"error": "Party name is required for ledger report"}
+
+        normalized = normalize_party_name(party)
+        alias = db.query(models.PartyAlias).filter(
+            models.PartyAlias.normalized_alias == normalized
+        ).first()
+
+        if not alias:
+            alias = db.query(models.PartyAlias).filter(
+                models.PartyAlias.normalized_alias.contains(normalized)
+            ).first()
+
+        if not alias:
+            return {"error": "Party not found"}
+
+        party_row = db.query(models.Party).filter_by(id=alias.party_id).first()
+        query = db.query(models.Transaction).filter(models.Transaction.party_id == alias.party_id)
+
+        if start:
+            query = query.filter(models.Transaction.date >= start)
+        if end:
+            query = query.filter(models.Transaction.date <= end)
+
+        txns = query.order_by(models.Transaction.date.asc()).all()
+        balance, ledger = build_ledger(txns)
+        rows = [
+            {
+                "Party": party_row.name if party_row else party,
+                "Date": row["date"],
+                "Type": row["type"],
+                "Category": row["category"],
+                "Item": row["item"],
+                "Mode": row["payment_mode"],
+                "Amount": row["amount"],
+                "Balance": row["balance"]
+            }
+            for row in ledger
+        ]
+        rows.append({
+            "Party": party_row.name if party_row else party,
+            "Date": "",
+            "Type": "TOTAL",
+            "Category": "",
+            "Item": "",
+            "Mode": "",
+            "Amount": "",
+            "Balance": float(balance)
+        })
+        columns = ["Party", "Date", "Type", "Category", "Item", "Mode", "Amount", "Balance"]
+        filename = safe_filename(f"ledger_{party}")
+        return report_response(rows, columns, filename, file_format, f"Ledger Report - {party}")
+
+    if report_type == "summary":
+        query = db.query(models.Transaction)
+        if start:
+            query = query.filter(models.Transaction.date >= start)
+        if end:
+            query = query.filter(models.Transaction.date <= end)
+
+        txns = query.order_by(models.Transaction.date.asc()).all()
+        by_date = {}
+        for txn in txns:
+            key = str(txn.date)
+            by_date.setdefault(key, {
+                "Date": key,
+                "Sales": Decimal("0"),
+                "Purchase": Decimal("0"),
+                "Payment Received": Decimal("0"),
+                "Payment Paid": Decimal("0"),
+                "Opening": Decimal("0")
+            })
+
+            amount = Decimal(txn.amount or 0)
+            if txn.type == "SALE":
+                by_date[key]["Sales"] += amount
+            elif txn.type == "PURCHASE":
+                by_date[key]["Purchase"] += amount
+            elif txn.type == "PAYMENT" and txn.category == "RECEIVED":
+                by_date[key]["Payment Received"] += amount
+            elif txn.type == "PAYMENT" and txn.category == "PAID":
+                by_date[key]["Payment Paid"] += amount
+            elif txn.type == "OPENING":
+                by_date[key]["Opening"] += amount
+
+        rows = []
+        for row in by_date.values():
+            sales = row["Sales"]
+            purchase = row["Purchase"]
+            rows.append({
+                "Date": row["Date"],
+                "Sales": float(sales),
+                "Purchase": float(purchase),
+                "Profit": float(sales - purchase),
+                "Payment Received": float(row["Payment Received"]),
+                "Payment Paid": float(row["Payment Paid"]),
+                "Opening": float(row["Opening"])
+            })
+
+        columns = ["Date", "Sales", "Purchase", "Profit", "Payment Received", "Payment Paid", "Opening"]
+        return report_response(rows, columns, "financial_summary", file_format, "Financial Summary")
+
+    if report_type == "outstanding":
+        rows = []
+        parties = db.query(models.Party).order_by(models.Party.name.asc()).all()
+
+        for party_row in parties:
+            query = db.query(models.Transaction).filter_by(party_id=party_row.id)
+            if start:
+                query = query.filter(models.Transaction.date >= start)
+            if end:
+                query = query.filter(models.Transaction.date <= end)
+            txns = query.all()
+            receivable = sum(receivable_delta(t) for t in txns)
+            payable = sum(payable_delta(t) for t in txns)
+
+            if receivable or payable:
+                rows.append({
+                    "Party": party_row.name,
+                    "Type": party_row.type or "",
+                    "Receivable": float(receivable),
+                    "Payable": float(payable),
+                    "Net Outstanding": float(receivable - payable)
+                })
+
+        columns = ["Party", "Type", "Receivable", "Payable", "Net Outstanding"]
+        return report_response(rows, columns, "outstanding_balances", file_format, "Outstanding Balances")
+
+    if report_type == "inventory":
+        target = parse_input_date(date) if date else pd.Timestamp.today().date()
+        if date and not target:
+            return {"error": "Invalid date format"}
+
+        rows = []
+        items = set()
+        for row in db.query(models.Transaction.item_type).filter(models.Transaction.item_type.isnot(None)).distinct().all():
+            if row.item_type:
+                items.add(row.item_type)
+        for row in db.query(models.ItemOpeningStock.item_type).distinct().all():
+            if row.item_type:
+                items.add(row.item_type)
+
+        for item in sorted(items):
+            processed = db.query(models.DailyItemStock).filter_by(
+                date=target,
+                item_type=item
+            ).first()
+
+            if processed:
+                rows.append({
+                    "Date": str(processed.date),
+                    "Item": processed.item_type,
+                    "Opening Kg": float(processed.opening_weight or 0),
+                    "Purchase Kg": float(processed.purchase_weight or 0),
+                    "Sales Kg": float(processed.sales_weight or 0),
+                    "Expected Kg": float(processed.expected_closing_weight or 0),
+                    "Actual Kg": float(processed.actual_closing_weight or 0),
+                    "Leakage Kg": float(processed.leakage or 0)
+                })
+                continue
+
+            opening = db.query(models.ItemOpeningStock).filter(
+                models.ItemOpeningStock.item_type == item,
+                models.ItemOpeningStock.date <= target
+            ).order_by(models.ItemOpeningStock.date.desc()).first()
+
+            opening_date = opening.date if opening else None
+            opening_weight = Decimal(opening.opening_weight or 0) if opening else Decimal("0")
+            query = db.query(models.Transaction).filter(
+                models.Transaction.item_type == item,
+                models.Transaction.date <= target
+            )
+
+            if opening_date:
+                query = query.filter(models.Transaction.date >= opening_date)
+
+            txns = query.all()
+            purchase_weight = sum(Decimal(t.weight or 0) for t in txns if t.type == "PURCHASE")
+            sales_weight = sum(Decimal(t.weight or 0) for t in txns if t.type == "SALE")
+            expected = opening_weight + purchase_weight - sales_weight
+
+            rows.append({
+                "Date": str(target),
+                "Item": item,
+                "Opening Kg": float(opening_weight),
+                "Purchase Kg": float(purchase_weight),
+                "Sales Kg": float(sales_weight),
+                "Expected Kg": float(expected),
+                "Actual Kg": "",
+                "Leakage Kg": ""
+            })
+
+        columns = ["Date", "Item", "Opening Kg", "Purchase Kg", "Sales Kg", "Expected Kg", "Actual Kg", "Leakage Kg"]
+        return report_response(rows, columns, f"inventory_{target}", file_format, f"Inventory Report - {target}")
+
+    if report_type == "transactions":
+        query = db.query(models.Transaction, models.Party).join(
+            models.Party,
+            models.Transaction.party_id == models.Party.id
+        )
+        if start:
+            query = query.filter(models.Transaction.date >= start)
+        if end:
+            query = query.filter(models.Transaction.date <= end)
+        if party and len(party.strip()) >= 2:
+            normalized = normalize_party_name(party)
+            aliases = db.query(models.PartyAlias).filter(
+                models.PartyAlias.normalized_alias.contains(normalized)
+            ).all()
+            party_ids = [alias.party_id for alias in aliases]
+            query = query.filter(models.Transaction.party_id.in_(party_ids))
+
+        rows = []
+        for txn, party_row in query.order_by(models.Transaction.date.asc()).all():
+            rows.append({
+                "Date": str(txn.date),
+                "Party": party_row.name,
+                "Party Type": party_row.type or "",
+                "Type": txn.type or "",
+                "Category": txn.category or "",
+                "Item": txn.item_type or "",
+                "Kg": float(txn.weight or 0),
+                "Rate": float(txn.rate or 0),
+                "Amount": float(txn.amount or 0),
+                "Mode": txn.payment_mode or ""
+            })
+
+        columns = ["Date", "Party", "Party Type", "Type", "Category", "Item", "Kg", "Rate", "Amount", "Mode"]
+        return report_response(rows, columns, "transactions", file_format, "Transaction Report")
+
+    return {"error": "Unknown report type"}
 
 
 @app.get("/dashboard")

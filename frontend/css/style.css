@@ -130,6 +130,10 @@ body {
   content: "L";
 }
 
+#menu-reports::before {
+  content: "R";
+}
+
 .menu button.active,
 .menu button:hover {
   border-color: rgb(255 255 255 / 0.08);
@@ -166,12 +170,14 @@ button:disabled {
 }
 
 button:focus-visible,
-input:focus-visible {
+input:focus-visible,
+select:focus-visible {
   outline: 3px solid rgb(184 111 32 / 0.3);
   outline-offset: 2px;
 }
 
-input {
+input,
+select {
   width: 210px;
   max-width: 100%;
   min-height: 42px;
@@ -182,6 +188,10 @@ input {
   color: var(--ink);
   font: inherit;
   box-shadow: inset 0 1px 1px rgb(15 23 42 / 0.03);
+}
+
+select {
+  cursor: pointer;
 }
 
 input::placeholder {

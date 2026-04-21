@@ -1,0 +1,81 @@
+function toggleReportFields() {
+  const reportType = document.getElementById("reportType")?.value;
+  const partyInput = document.getElementById("party");
+  const startDate = document.getElementById("reportStartDate");
+  const endDate = document.getElementById("reportEndDate");
+  const reportDate = document.getElementById("reportDate");
+
+  if (!partyInput || !startDate || !endDate || !reportDate) return;
+
+  const needsParty = reportType === "ledger";
+  const allowsParty = reportType === "transactions";
+  const usesSingleDate = reportType === "inventory";
+
+  partyInput.style.display = needsParty || allowsParty ? "inline-flex" : "none";
+  partyInput.placeholder = needsParty ? "Party name required" : "Party name optional";
+  startDate.style.display = usesSingleDate ? "none" : "inline-flex";
+  endDate.style.display = usesSingleDate ? "none" : "inline-flex";
+  reportDate.style.display = usesSingleDate ? "inline-flex" : "none";
+}
+
+async function downloadReport(format) {
+  const reportType = document.getElementById("reportType")?.value;
+  const party = document.getElementById("party")?.value.trim();
+  const startDate = document.getElementById("reportStartDate")?.value;
+  const endDate = document.getElementById("reportEndDate")?.value;
+  const reportDate = document.getElementById("reportDate")?.value;
+
+  if (!reportType) return;
+
+  if (reportType === "ledger" && !party) {
+    showToast("Enter party name");
+    return;
+  }
+
+  const params = new URLSearchParams({
+    report_type: reportType,
+    file_format: format
+  });
+
+  if (party) params.set("party", party);
+  if (reportType === "inventory") {
+    if (reportDate) params.set("date", reportDate);
+  } else {
+    if (startDate) params.set("start_date", startDate);
+    if (endDate) params.set("end_date", endDate);
+  }
+
+  try {
+    toggleButtons(true);
+    const response = await fetch(`${BASE_URL}/reports/export?${params.toString()}`);
+
+    if (!response.ok) {
+      throw new Error(`Report failed: ${response.status}`);
+    }
+
+    const contentType = response.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      const data = await response.json();
+      showToast(data.error || "Report could not be downloaded");
+      return;
+    }
+
+    const blob = await response.blob();
+    const extension = format === "pdf" ? "pdf" : "xlsx";
+    const filename = `${reportType}_report.${extension}`;
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    showToast("Report downloaded");
+  } catch (e) {
+    console.error(e);
+    showToast("Report download failed");
+  } finally {
+    toggleButtons(false);
+  }
+}

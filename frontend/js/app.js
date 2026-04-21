@@ -302,6 +302,71 @@ function loadPage(page) {
         loadAnalytics();
       }, 100);
     }
+
+    // --- Reports Page
+    else if (page === "reports") {
+      title.innerText = "Reports";
+
+      content.innerHTML = `
+        <div class="container">
+
+          <div class="section">
+            <h2>Download Financial Records</h2>
+            <div class="upload-box report-filters">
+              <select id="reportType" onchange="toggleReportFields()">
+                <option value="ledger">Party Ledger</option>
+                <option value="transactions">All Transactions</option>
+                <option value="summary">Financial Summary</option>
+                <option value="outstanding">Outstanding Balances</option>
+                <option value="inventory">Inventory & Leakage</option>
+              </select>
+
+              <input type="text" id="party" placeholder="Party name" list="partySuggestions" autocomplete="off" oninput="suggestParties()">
+              <datalist id="partySuggestions"></datalist>
+
+              <input type="date" id="reportStartDate" aria-label="Report start date">
+              <input type="date" id="reportEndDate" aria-label="Report end date">
+              <input type="date" id="reportDate" aria-label="Inventory date">
+            </div>
+
+            <div class="upload-box report-actions">
+              <button onclick="downloadReport('excel')">Download Excel</button>
+              <button onclick="downloadReport('pdf')">Download PDF</button>
+            </div>
+          </div>
+
+          <div class="grid">
+            <div class="metric blue">
+              <span>Party Ledger</span>
+              <h2>Client-wise</h2>
+            </div>
+            <div class="metric green">
+              <span>Financial Summary</span>
+              <h2>Daily totals</h2>
+            </div>
+            <div class="metric dark">
+              <span>Outstanding</span>
+              <h2>Receivable / Payable</h2>
+            </div>
+            <div class="metric red">
+              <span>Inventory</span>
+              <h2>Leakage kg</h2>
+            </div>
+          </div>
+
+        </div>
+      `;
+
+      setTimeout(() => {
+        const today = new Date();
+        const past = new Date();
+        past.setDate(today.getDate() - 6);
+        document.getElementById("reportStartDate").value = past.toISOString().split("T")[0];
+        document.getElementById("reportEndDate").value = today.toISOString().split("T")[0];
+        document.getElementById("reportDate").value = today.toISOString().split("T")[0];
+        toggleReportFields();
+      }, 100);
+    }
   }
 
   // --- Initial load
