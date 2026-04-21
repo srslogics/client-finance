@@ -18,10 +18,10 @@ async function loadAnalytics() {
   try {
 
     // --- Fetch data ---
-    const trend = await apiCall(`/analytics/trend?start_date=${start}&end_date=${end}`);
-    const leakage = await apiCall(`/analytics/leakage?start_date=${start}&end_date=${end}`);
-    const debtors = await apiCall("/top-debtors");
-    const profitByItem = await apiCall(`/analytics/profit-by-item?start_date=${start}&end_date=${end}`);
+    const trend = await optionalApiCall(`/analytics/trend?start_date=${start}&end_date=${end}`, []);
+    const leakage = await optionalApiCall(`/analytics/leakage?start_date=${start}&end_date=${end}`, []);
+    const debtors = await optionalApiCall("/top-debtors", { top_debtors: [] });
+    const profitByItem = await optionalApiCall(`/analytics/profit-by-item?start_date=${start}&end_date=${end}`, []);
 
     // 🔥 Delay ensures DOM is ready
     setTimeout(() => {
@@ -35,31 +35,30 @@ async function loadAnalytics() {
 }
 
 function renderAnalyticsCharts(trend, leakage, debtors, profitByItem) {
+    destroyAnalyticsCharts();
 
-    // --- Safety checks ---
-    if (!trend || trend.length === 0) {
-      console.warn("No trend data");
-      return;
-    }
+    trend = Array.isArray(trend) ? trend : [];
+    leakage = Array.isArray(leakage) ? leakage : [];
+    profitByItem = Array.isArray(profitByItem) ? profitByItem : [];
+    const topDebtors = Array.isArray(debtors?.top_debtors) ? debtors.top_debtors : [];
 
     const dates = trend.map(d => d.date);
     const sales = trend.map(d => d.sales || 0);
     const purchase = trend.map(d => d.purchase || 0);
 
-    // 🔥 Destroy old charts
-    destroyAnalyticsCharts();
-
     // --- Trend Chart ---
-    analyticsCharts.trend = new Chart(document.getElementById("trendChart"), {
-      type: "line",
-      data: {
-        labels: dates,
-        datasets: [
-          { label: "Sales", data: sales },
-          { label: "Purchase", data: purchase }
-        ]
-      }
-    });
+    if (trend && trend.length > 0) {
+      analyticsCharts.trend = new Chart(document.getElementById("trendChart"), {
+        type: "line",
+        data: {
+          labels: dates,
+          datasets: [
+            { label: "Sales", data: sales },
+            { label: "Purchase", data: purchase }
+          ]
+        }
+      });
+    }
 
     // --- Leakage Chart ---
     if (leakage && leakage.length > 0) {
@@ -76,14 +75,14 @@ function renderAnalyticsCharts(trend, leakage, debtors, profitByItem) {
     }
 
     // --- Debtors Chart ---
-    if (debtors && debtors.top_debtors?.length > 0) {
+    if (topDebtors.length > 0) {
       analyticsCharts.debtor = new Chart(document.getElementById("debtorChart"), {
         type: "bar",
         data: {
-          labels: debtors.top_debtors.map(d => d.party_name),
+          labels: topDebtors.map(d => d.party_name),
           datasets: [{
             label: "Outstanding",
-            data: debtors.top_debtors.map(d => d.balance || 0)
+            data: topDebtors.map(d => d.balance || 0)
           }]
         }
       });

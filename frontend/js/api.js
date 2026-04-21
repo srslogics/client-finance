@@ -28,4 +28,13 @@ async function apiCall(url, method = "GET", body = null) {
 
     return data;
   }
+
+async function optionalApiCall(url, fallback, method = "GET", body = null) {
+  try {
+    return await apiCall(url, method, body);
+  } catch (e) {
+    console.warn(`Optional API unavailable: ${url}`, e);
+    return fallback;
+  }
+}
   

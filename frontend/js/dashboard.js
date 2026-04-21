@@ -5,17 +5,21 @@ const dashboardCharts = {
 };
 
 async function loadDashboard() {
-    const date = document.getElementById("dashboardDate").value;
+  const date = document.getElementById("dashboardDate").value;
 
   if (!date) return showToast("Select date");
 
   try {
     const data = await apiCall(`/dashboard?date=${date}`);
+    if (data.error) {
+      showToast(data.error);
+      return;
+    }
 
     setValue("sales", data.sales);
     setValue("purchase", data.purchase);
     setValue("profit", data.profit);
-    document.getElementById("leakage").innerText = data.leakage + " kg";
+    setKgValue("leakage", data.leakage);
     setValue("receivable", data.receivable);
     setValue("payable", data.payable);
     setValue("outstanding", data.total_outstanding);
@@ -27,9 +31,9 @@ async function loadDashboard() {
 
     const startStr = start.toISOString().split("T")[0];
 
-    const trend = await apiCall(`/analytics/trend?start_date=${startStr}&end_date=${date}`);
-    const leakage = await apiCall(`/analytics/leakage?start_date=${startStr}&end_date=${date}`);
-    const inventory = await apiCall(`/inventory/by-item?date=${date}`);
+    const trend = await optionalApiCall(`/analytics/trend?start_date=${startStr}&end_date=${date}`, []);
+    const leakage = await optionalApiCall(`/analytics/leakage?start_date=${startStr}&end_date=${date}`, []);
+    const inventory = await optionalApiCall(`/inventory/by-item?date=${date}`, { inventory: [] });
 
     // 🔥 Delay ensures DOM is ready
     setTimeout(() => {
@@ -49,20 +53,26 @@ function setValue(id, value) {
     "₹ " + Number(value || 0).toLocaleString();
 }
 
-function renderCharts(trend, leakage) {
+function setKgValue(id, value) {
+  document.getElementById(id).innerText =
+    Number(value || 0).toLocaleString() + " kg";
+}
 
-    if (!trend || trend.length === 0) {
-      console.warn("No trend data");
-      return;
-    }
+function renderCharts(trend, leakage) {
+    destroyDashboardCharts();
+
+    trend = Array.isArray(trend) ? trend : [];
+    leakage = Array.isArray(leakage) ? leakage : [];
 
     const dates = trend.map(d => d.date);
     const sales = trend.map(d => d.sales || 0);
     const purchase = trend.map(d => d.purchase || 0);
     const profit = trend.map(d => (d.sales || 0) - (d.purchase || 0));
 
-    // 🔥 Destroy old charts
-    destroyDashboardCharts();
+    if (!trend || trend.length === 0) {
+      console.warn("No trend data");
+      return;
+    }
 
     dashboardCharts.trend = new Chart(document.getElementById("trendChart"), {
       type: "line",
@@ -150,6 +160,7 @@ function renderCharts(trend, leakage) {
     const body = document.getElementById("inventoryBody");
     if (!body) return;
 
+    rows = Array.isArray(rows) ? rows : [];
     body.innerHTML = "";
 
     if (!rows.length) {

@@ -23,7 +23,7 @@ async function searchLedger() {
       if (endDate) params.set("end_date", endDate);
 
       const data = await apiCall(`/party/ledger?${params.toString()}`);
-      const detail = await apiCall(`/party/detail?name=${encodeURIComponent(name)}`);
+      const detail = await optionalApiCall(`/party/detail?name=${encodeURIComponent(name)}`, null);
 
       if (data.error) {
         body.innerHTML = `<tr><td colspan="7" class="empty"></td></tr>`;
