@@ -7,7 +7,7 @@ import pandas as pd
 from sqlalchemy.orm import Session
 from app.db import SessionLocal
 from app import models
-from sqlalchemy import case, func
+from sqlalchemy import case, func, text
 from decimal import Decimal
 import uvicorn
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,6 +17,24 @@ app = FastAPI()
 
 # Create tables
 Base.metadata.create_all(bind=engine)
+
+
+def ensure_database_schema():
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS item_type VARCHAR"))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS item_opening_stock (
+                id UUID PRIMARY KEY,
+                date DATE NOT NULL,
+                item_type VARCHAR NOT NULL,
+                opening_weight NUMERIC,
+                created_at TIMESTAMP DEFAULT now(),
+                CONSTRAINT unique_item_opening_stock UNIQUE (date, item_type)
+            )
+        """))
+
+
+ensure_database_schema()
 
 def get_db():
     db = SessionLocal()
