@@ -312,7 +312,7 @@ function loadPage(page) {
 
           <div class="section">
             <h2>Download Financial Records</h2>
-            <div class="upload-box report-filters">
+            <div class="report-form">
               <select id="reportType" onchange="toggleReportFields()">
                 <option value="ledger">Party Ledger</option>
                 <option value="transactions">All Transactions</option>
@@ -321,15 +321,15 @@ function loadPage(page) {
                 <option value="inventory">Inventory & Leakage</option>
               </select>
 
-              <input type="text" id="party" placeholder="Party name" list="partySuggestions" autocomplete="off" oninput="suggestParties()">
-              <datalist id="partySuggestions"></datalist>
+              <input type="text" id="reportParty" placeholder="Party name" list="reportPartySuggestions" autocomplete="off" oninput="suggestReportParties()">
+              <datalist id="reportPartySuggestions"></datalist>
 
               <input type="date" id="reportStartDate" aria-label="Report start date">
               <input type="date" id="reportEndDate" aria-label="Report end date">
               <input type="date" id="reportDate" aria-label="Inventory date">
             </div>
 
-            <div class="upload-box report-actions">
+            <div class="report-actions">
               <button onclick="downloadReport('excel')">Download Excel</button>
               <button onclick="downloadReport('pdf')">Download PDF</button>
             </div>

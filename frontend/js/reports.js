@@ -1,6 +1,8 @@
+let reportPartySuggestTimer = null;
+
 function toggleReportFields() {
   const reportType = document.getElementById("reportType")?.value;
-  const partyInput = document.getElementById("party");
+  const partyInput = document.getElementById("reportParty");
   const startDate = document.getElementById("reportStartDate");
   const endDate = document.getElementById("reportEndDate");
   const reportDate = document.getElementById("reportDate");
@@ -20,7 +22,7 @@ function toggleReportFields() {
 
 async function downloadReport(format) {
   const reportType = document.getElementById("reportType")?.value;
-  const party = document.getElementById("party")?.value.trim();
+  const party = document.getElementById("reportParty")?.value.trim();
   const startDate = document.getElementById("reportStartDate")?.value;
   const endDate = document.getElementById("reportEndDate")?.value;
   const reportDate = document.getElementById("reportDate")?.value;
@@ -78,4 +80,36 @@ async function downloadReport(format) {
   } finally {
     toggleButtons(false);
   }
+}
+
+function suggestReportParties() {
+  const input = document.getElementById("reportParty");
+  const suggestions = document.getElementById("reportPartySuggestions");
+  const name = input?.value.trim();
+
+  if (!suggestions) return;
+
+  clearTimeout(reportPartySuggestTimer);
+
+  if (!name || name.length < 2) {
+    suggestions.innerHTML = "";
+    return;
+  }
+
+  reportPartySuggestTimer = setTimeout(async () => {
+    try {
+      const data = await apiCall(`/party/search?name=${encodeURIComponent(name)}`);
+      suggestions.innerHTML = "";
+
+      (data.results || []).forEach(party => {
+        const option = document.createElement("option");
+        option.value = party.name;
+        option.label = party.type ? `${party.name} (${party.type})` : party.name;
+        suggestions.appendChild(option);
+      });
+    } catch (e) {
+      console.error(e);
+      suggestions.innerHTML = "";
+    }
+  }, 250);
 }

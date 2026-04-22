@@ -366,6 +366,40 @@ input[type="file"] {
   flex: 1 1 260px;
 }
 
+.report-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.1fr) minmax(240px, 1.5fr) minmax(160px, 1fr) minmax(160px, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.report-form input,
+.report-form select {
+  width: 100%;
+}
+
+.report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.report-actions button {
+  min-width: 170px;
+}
+
+.report-actions button:first-child {
+  background: var(--success);
+  box-shadow: 0 10px 20px rgb(35 120 91 / 0.18);
+}
+
+.report-actions button:first-child:hover {
+  background: #1d644c;
+}
+
 .stock-rows {
   display: grid;
   gap: 12px;
@@ -528,7 +562,17 @@ canvas {
     flex-direction: column;
   }
 
+  .report-form {
+    grid-template-columns: 1fr;
+  }
+
+  .report-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   input,
+  select,
   button {
     width: 100%;
   }
