@@ -1882,6 +1882,103 @@ def leakage_trend(start_date: str, end_date: str, db: Session = Depends(get_db))
     ]
 
 
+@app.get("/analytics/summary")
+def analytics_summary(start_date: str, end_date: str, db: Session = Depends(get_db)):
+    start = parse_input_date(start_date)
+    end = parse_input_date(end_date)
+    if not start or not end:
+        return {"error": "Invalid date format"}
+
+    txns = db.query(models.Transaction).filter(
+        models.Transaction.date.between(start, end)
+    ).all()
+
+    sales = sum(Decimal(t.amount or 0) for t in txns if t.type == "SALE")
+    purchase = sum(Decimal(t.amount or 0) for t in txns if t.type == "PURCHASE")
+    received = sum(Decimal(t.amount or 0) for t in txns if t.type == "PAYMENT" and t.category == "RECEIVED")
+    paid = sum(Decimal(t.amount or 0) for t in txns if t.type == "PAYMENT" and t.category == "PAID")
+
+    stock_rows = db.query(models.DailyItemStock).filter(
+        models.DailyItemStock.date.between(start, end)
+    ).all()
+    leakage = sum(Decimal(row.leakage or 0) for row in stock_rows)
+
+    return {
+        "sales": float(sales),
+        "purchase": float(purchase),
+        "profit": float(sales - purchase),
+        "received": float(received),
+        "paid": float(paid),
+        "net_cash": float(received - paid),
+        "leakage": float(leakage)
+    }
+
+
+@app.get("/analytics/item-volume")
+def item_volume(start_date: str, end_date: str, db: Session = Depends(get_db)):
+    start = parse_input_date(start_date)
+    end = parse_input_date(end_date)
+    if not start or not end:
+        return {"error": "Invalid date format"}
+
+    txns = db.query(models.Transaction).filter(
+        models.Transaction.date.between(start, end),
+        models.Transaction.item_type.isnot(None)
+    ).all()
+
+    by_item = {}
+    for txn in txns:
+        item = txn.item_type or "Unknown"
+        by_item.setdefault(item, {"item": item, "purchase_kg": Decimal("0"), "sales_kg": Decimal("0")})
+
+        if txn.type == "PURCHASE":
+            by_item[item]["purchase_kg"] += Decimal(txn.weight or 0)
+        elif txn.type == "SALE":
+            by_item[item]["sales_kg"] += Decimal(txn.weight or 0)
+
+    return [
+        {
+            "item": row["item"],
+            "purchase_kg": float(row["purchase_kg"]),
+            "sales_kg": float(row["sales_kg"])
+        }
+        for row in sorted(by_item.values(), key=lambda value: value["item"])
+    ]
+
+
+@app.get("/analytics/payment-modes")
+def payment_modes(start_date: str, end_date: str, db: Session = Depends(get_db)):
+    start = parse_input_date(start_date)
+    end = parse_input_date(end_date)
+    if not start or not end:
+        return {"error": "Invalid date format"}
+
+    txns = db.query(models.Transaction).filter(
+        models.Transaction.date.between(start, end),
+        models.Transaction.type == "PAYMENT"
+    ).all()
+
+    by_mode = {}
+    for txn in txns:
+        mode = txn.payment_mode or "NA"
+        by_mode.setdefault(mode, {"mode": mode, "received": Decimal("0"), "paid": Decimal("0")})
+
+        if txn.category == "RECEIVED":
+            by_mode[mode]["received"] += Decimal(txn.amount or 0)
+        elif txn.category == "PAID":
+            by_mode[mode]["paid"] += Decimal(txn.amount or 0)
+
+    return [
+        {
+            "mode": row["mode"],
+            "received": float(row["received"]),
+            "paid": float(row["paid"]),
+            "total": float(row["received"] + row["paid"])
+        }
+        for row in sorted(by_mode.values(), key=lambda value: value["total"], reverse=True)
+    ]
+
+
 @app.get("/inventory/by-item")
 def inventory_by_item(date: str, db: Session = Depends(get_db)):
     target_date = parse_input_date(date)

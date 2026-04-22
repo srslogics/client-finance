@@ -326,10 +326,34 @@ function loadPage(page) {
             <button onclick="loadAnalytics()">Load</button>
           </div>
 
+          <div class="grid analytics-kpi-grid">
+            <div class="metric blue">
+              <span>Sales</span>
+              <h2 id="analyticsSales">₹ 0</h2>
+            </div>
+            <div class="metric dark">
+              <span>Purchase</span>
+              <h2 id="analyticsPurchase">₹ 0</h2>
+            </div>
+            <div class="metric profit">
+              <span>Profit</span>
+              <h2 id="analyticsProfit">₹ 0</h2>
+            </div>
+            <div class="metric green">
+              <span>Net Cash</span>
+              <h2 id="analyticsCash">₹ 0</h2>
+            </div>
+          </div>
+
           <div class="chart-grid">
           <div class="card chart-card">
             <h2>Sales vs Purchase Trend</h2>
             <canvas id="trendChart"></canvas>
+          </div>
+
+          <div class="card chart-card">
+            <h2>Cash In vs Cash Out</h2>
+            <canvas id="cashFlowChart"></canvas>
           </div>
 
           <div class="card chart-card">
@@ -338,8 +362,18 @@ function loadPage(page) {
           </div>
 
           <div class="card chart-card">
+            <h2>Purchase vs Sales Kg By Hen Type</h2>
+            <canvas id="itemVolumeChart"></canvas>
+          </div>
+
+          <div class="card chart-card">
             <h2>Top Debtors</h2>
             <canvas id="debtorChart"></canvas>
+          </div>
+
+          <div class="card chart-card">
+            <h2>Payment Mode Split</h2>
+            <canvas id="paymentModeChart"></canvas>
           </div>
 
           <div class="card chart-card">
