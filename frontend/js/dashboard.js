@@ -25,11 +25,11 @@ async function loadDashboard() {
     setValue("outstanding", data.total_outstanding);
 
     // --- Date range (last 7 days)
-    const today = new Date(date);
+    const today = parseDateInput(date);
     const start = new Date(today);
     start.setDate(start.getDate() - 6);
 
-    const startStr = start.toISOString().split("T")[0];
+    const startStr = formatDateInput(start);
 
     const trend = await optionalApiCall(`/analytics/trend?start_date=${startStr}&end_date=${date}`, []);
     const leakage = await optionalApiCall(`/analytics/leakage?start_date=${startStr}&end_date=${date}`, []);
@@ -64,13 +64,22 @@ function renderCharts(trend, leakage) {
     trend = Array.isArray(trend) ? trend : [];
     leakage = Array.isArray(leakage) ? leakage : [];
 
+    if (typeof Chart === "undefined") {
+      drawCanvasMessage("trendChart", "Charts are unavailable. Check internet connection.");
+      drawCanvasMessage("profitChart", "Charts are unavailable. Check internet connection.");
+      drawCanvasMessage("leakageChart", "Charts are unavailable. Check internet connection.");
+      return;
+    }
+
     const dates = trend.map(d => d.date);
     const sales = trend.map(d => d.sales || 0);
     const purchase = trend.map(d => d.purchase || 0);
-    const profit = trend.map(d => (d.sales || 0) - (d.purchase || 0));
+    const profit = trend.map(d => d.profit ?? ((d.sales || 0) - (d.purchase || 0)));
 
     if (!trend || trend.length === 0) {
       console.warn("No trend data");
+      drawCanvasMessage("trendChart", "No sales or purchase data");
+      drawCanvasMessage("profitChart", "No profit data");
       return;
     }
 
@@ -79,8 +88,8 @@ function renderCharts(trend, leakage) {
       data: {
         labels: dates,
         datasets: [
-          { label: "Sales", data: sales },
-          { label: "Purchase", data: purchase }
+          { label: "Sales", data: sales, borderColor: "#2f7f96", backgroundColor: "rgb(47 127 150 / 0.12)", tension: 0.35 },
+          { label: "Purchase", data: purchase, borderColor: "#b86f20", backgroundColor: "rgb(184 111 32 / 0.12)", tension: 0.35 }
         ]
       }
     });
@@ -90,7 +99,14 @@ function renderCharts(trend, leakage) {
       data: {
         labels: dates,
         datasets: [
-          { label: "Profit", data: profit }
+          {
+            label: "Profit",
+            data: profit,
+            borderColor: "#23785b",
+            backgroundColor: "rgb(35 120 91 / 0.12)",
+            fill: true,
+            tension: 0.35
+          }
         ]
       }
     });
@@ -105,6 +121,8 @@ function renderCharts(trend, leakage) {
           ]
         }
       });
+    } else {
+      drawCanvasMessage("leakageChart", "No leakage data");
     }
   }
 
@@ -115,6 +133,11 @@ function renderCharts(trend, leakage) {
         dashboardCharts[key] = null;
       }
     });
+  }
+
+  function parseDateInput(value) {
+    const [year, month, day] = value.split("-").map(Number);
+    return new Date(year, month - 1, day);
   }
 
   function generateInsights(today, trend) {
@@ -136,17 +159,17 @@ function renderCharts(trend, leakage) {
     const profitPrev = (prev.sales || 0) - (prev.purchase || 0);
 
     if (profitToday > profitPrev) {
-      addInsight("Profit increased vs yesterday 📈");
+      addInsight("Profit increased vs previous day");
     } else {
-      addInsight("Profit decreased vs yesterday ⚠️");
+      addInsight("Profit decreased vs previous day");
     }
 
     if ((today.leakage || 0) > 50) {
-      addInsight("High leakage detected 🚨");
+      addInsight("High leakage detected");
     }
 
     if ((today.total_outstanding || 0) > 100000) {
-      addInsight("Outstanding is high — cash risk ⚠️");
+      addInsight("Outstanding is high. Review collections.");
     }
   }
 

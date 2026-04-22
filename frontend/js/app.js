@@ -30,6 +30,8 @@ function loadPage(page) {
             </div>
           </div>
 
+          <div id="uploadStatus" class="notice" aria-live="polite"></div>
+
           <div class="section">
             <h2>1. Dealer Purchase File</h2>
             <div class="upload-box">
@@ -103,11 +105,16 @@ function loadPage(page) {
 
         </div>
       `;
+
+      setTimeout(() => {
+        const processDate = document.getElementById("processDate");
+        if (processDate) processDate.value = formatDateInput(new Date());
+      }, 100);
     }
 
     // --- Dashboard Page
     else if (page === "dashboard") {
-      title.innerText = "Investor Dashboard";
+      title.innerText = "Business Dashboard";
 
       content.innerHTML = `
         <div class="container">
@@ -199,7 +206,7 @@ function loadPage(page) {
 
       // ✅ Auto load dashboard
       setTimeout(() => {
-        const today = new Date().toISOString().split("T")[0];
+        const today = formatDateInput(new Date());
         document.getElementById("dashboardDate").value = today;
         loadDashboard();
       }, 100);
@@ -296,8 +303,8 @@ function loadPage(page) {
         const past = new Date();
         past.setDate(today.getDate() - 6);
 
-        document.getElementById("startDate").value = past.toISOString().split("T")[0];
-        document.getElementById("endDate").value = today.toISOString().split("T")[0];
+        document.getElementById("startDate").value = formatDateInput(past);
+        document.getElementById("endDate").value = formatDateInput(today);
 
         loadAnalytics();
       }, 100);
@@ -361,9 +368,9 @@ function loadPage(page) {
         const today = new Date();
         const past = new Date();
         past.setDate(today.getDate() - 6);
-        document.getElementById("reportStartDate").value = past.toISOString().split("T")[0];
-        document.getElementById("reportEndDate").value = today.toISOString().split("T")[0];
-        document.getElementById("reportDate").value = today.toISOString().split("T")[0];
+        document.getElementById("reportStartDate").value = formatDateInput(past);
+        document.getElementById("reportEndDate").value = formatDateInput(today);
+        document.getElementById("reportDate").value = formatDateInput(today);
         toggleReportFields();
       }, 100);
     }
@@ -377,13 +384,39 @@ function loadPage(page) {
     document.getElementById("todayDate").innerText = today;
   };
 
+  function formatDateInput(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  function drawCanvasMessage(canvasId, message) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    const width = canvas.clientWidth || 320;
+    const height = canvas.clientHeight || 180;
+    canvas.width = width;
+    canvas.height = height;
+    ctx.clearRect(0, 0, width, height);
+    ctx.font = "14px Inter, sans-serif";
+    ctx.fillStyle = "#8792a7";
+    ctx.textAlign = "center";
+    ctx.fillText(message, width / 2, height / 2);
+  }
+
+  let toastTimer = null;
+
   // --- Toast
   function showToast(message) {
     const toast = document.getElementById("toast");
     toast.innerText = message;
     toast.style.display = "block";
 
-    setTimeout(() => {
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
       toast.style.display = "none";
-    }, 2000);
+    }, 3200);
   }

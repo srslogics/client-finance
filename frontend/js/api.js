@@ -15,7 +15,7 @@ async function apiCall(url, method = "GET", body = null, headers = {}) {
       options.body = body;
     }
   
-    const res = await fetch(BASE_URL + url, options);
+    const res = await fetchWithRetry(BASE_URL + url, options);
   
     if (!res.ok) {
       throw new Error(`API error: ${res.status}`);
@@ -38,4 +38,27 @@ async function optionalApiCall(url, fallback, method = "GET", body = null) {
     return fallback;
   }
 }
-  
+
+async function fetchWithRetry(url, options, attempts = 2) {
+  let lastError;
+
+  for (let attempt = 0; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetch(url, options);
+      if (response.ok || response.status < 500 || attempt === attempts) {
+        return response;
+      }
+    } catch (e) {
+      lastError = e;
+      if (attempt === attempts) throw e;
+    }
+
+    await wait(1200 * (attempt + 1));
+  }
+
+  throw lastError || new Error("Network request failed");
+}
+
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}

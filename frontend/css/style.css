@@ -491,7 +491,61 @@ tbody tr:hover {
   overflow-wrap: anywhere;
 }
 
+.notice {
+  display: none;
+  margin-bottom: 22px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+
+.notice strong {
+  display: block;
+}
+
+.notice ul {
+  margin: 10px 0 0;
+  padding-left: 18px;
+}
+
+.notice li {
+  margin-top: 4px;
+}
+
+.notice.info,
+.notice.success,
+.notice.warning,
+.notice.error {
+  display: block;
+}
+
+.notice.info {
+  border-color: #b9c4d6;
+  background: #f7fafc;
+}
+
+.notice.success {
+  border-color: rgb(35 120 91 / 0.35);
+  background: rgb(35 120 91 / 0.08);
+}
+
+.notice.warning {
+  border-color: rgb(184 111 32 / 0.35);
+  background: rgb(184 111 32 / 0.09);
+}
+
+.notice.error {
+  border-color: rgb(182 74 61 / 0.35);
+  background: rgb(182 74 61 / 0.08);
+}
+
 canvas {
+  display: block;
+  width: 100%;
+  min-height: 220px;
   max-height: 320px;
 }
 

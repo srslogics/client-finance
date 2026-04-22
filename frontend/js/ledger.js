@@ -10,12 +10,19 @@ async function searchLedger() {
       return;
     }
 
+    if (startDate && endDate && startDate > endDate) {
+      showToast("Start date cannot be after end date");
+      return;
+    }
+
     const body = document.getElementById("ledgerBody");
     const total = document.getElementById("totalBalance");
+    const summary = document.getElementById("partySummary");
 
     // --- Loading state
     body.innerHTML = `<tr><td colspan="7" class="empty">Loading...</td></tr>`;
     total.innerText = "₹ 0";
+    if (summary) summary.innerHTML = "";
 
     try {
       const params = new URLSearchParams({ name });
@@ -43,6 +50,7 @@ async function searchLedger() {
       // --- No data
       if (!data.ledger || data.ledger.length === 0) {
         body.innerHTML = `<tr><td colspan="7" class="empty">No records found</td></tr>`;
+        total.innerText = formatMoney(data.total_balance || 0);
         return;
       }
 
@@ -56,7 +64,7 @@ async function searchLedger() {
       data.ledger.forEach(row => {
         const tr = document.createElement("tr");
 
-        const typeClass = row.type.startsWith("PAYMENT") ? "credit" : "debit";
+        const typeClass = Number(row.delta || 0) < 0 ? "credit" : "debit";
 
         appendCell(tr, row.date);
         appendCell(tr, row.type);

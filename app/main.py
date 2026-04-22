@@ -1840,14 +1840,26 @@ def get_trend(start_date: str, end_date: str, db: Session = Depends(get_db)):
         models.Transaction.date.between(start, end)
     ).group_by(models.Transaction.date).order_by(models.Transaction.date).all()
 
-    return [
-        {
-            "date": str(r.date),
+    by_date = {
+        r.date: {
             "sales": float(r.sales or 0),
             "purchase": float(r.purchase or 0)
         }
         for r in results
-    ]
+    }
+
+    trend = []
+    for day in pd.date_range(start=start, end=end):
+        current_date = day.date()
+        row = by_date.get(current_date, {"sales": 0, "purchase": 0})
+        trend.append({
+            "date": str(current_date),
+            "sales": row["sales"],
+            "purchase": row["purchase"],
+            "profit": row["sales"] - row["purchase"]
+        })
+
+    return trend
 
 @app.get("/analytics/leakage")
 def leakage_trend(start_date: str, end_date: str, db: Session = Depends(get_db)):

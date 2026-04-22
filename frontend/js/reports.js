@@ -34,6 +34,11 @@ async function downloadReport(format) {
     return;
   }
 
+  if (reportType !== "inventory" && startDate && endDate && startDate > endDate) {
+    showToast("Start date cannot be after end date");
+    return;
+  }
+
   const params = new URLSearchParams({
     report_type: reportType,
     file_format: format

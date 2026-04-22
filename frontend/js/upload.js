@@ -30,6 +30,7 @@ async function handleUpload(inputId, endpoint, label, preview = false) {
     }
 
     showToast(`${preview ? "Previewing" : "Uploading"} ${label}...`);
+    setUploadStatus("info", `${preview ? "Checking" : "Uploading"} ${label}...`);
 
     const formData = new FormData();
     formData.append("file", file);
@@ -43,16 +44,23 @@ async function handleUpload(inputId, endpoint, label, preview = false) {
 
       if (data.error) {
         showToast(data.error);
+        setUploadStatus("error", data.error, data.errors || []);
       } else {
         const skipped = data.rows_skipped ? `, ${data.rows_skipped} skipped` : "";
         const action = preview ? "preview" : "uploaded";
         showToast(`${label} ${action}: ${data.rows_inserted} rows${skipped}`);
+        setUploadStatus(
+          data.errors?.length ? "warning" : "success",
+          `${label} ${action}: ${data.rows_inserted} rows${skipped}`,
+          data.errors || []
+        );
         if (!preview) fileInput.value = ""; // reset input
       }
 
     } catch (e) {
       console.error(e);
       showToast("Upload failed");
+      setUploadStatus("error", "Upload failed. Check the file format and try again.");
     } finally {
       toggleButtons(false);
     }
@@ -116,6 +124,12 @@ async function handleUpload(inputId, endpoint, label, preview = false) {
       return;
     }
 
+    const invalidWeight = rows.some(row => Number(row.actual_weight) < 0);
+    if (invalidWeight) {
+      showToast("Actual stock cannot be negative");
+      return;
+    }
+
     showToast("Processing day...");
     toggleButtons(true);
 
@@ -129,13 +143,16 @@ async function handleUpload(inputId, endpoint, label, preview = false) {
 
       if (data.error) {
         showToast(data.error);
+        setUploadStatus("error", data.error);
       } else {
         showToast(`Processed. Leakage: ${Number(data.total_leakage || 0).toLocaleString()} kg`);
+        setUploadStatus("success", `Day processed. Leakage: ${Number(data.total_leakage || 0).toLocaleString()} kg`);
       }
 
     } catch (e) {
       console.error(e);
       showToast("Processing failed");
+      setUploadStatus("error", "Processing failed. Check backend connection and entered stock values.");
     } finally {
       toggleButtons(false);
     }
@@ -194,4 +211,26 @@ async function suggestItems(input) {
       suggestions.innerHTML = "";
     }
   }, 200);
+}
+
+function setUploadStatus(type, message, errors = []) {
+  const status = document.getElementById("uploadStatus");
+  if (!status) return;
+
+  status.className = `notice ${type}`;
+  status.innerHTML = "";
+
+  const title = document.createElement("strong");
+  title.innerText = message;
+  status.appendChild(title);
+
+  if (errors.length) {
+    const list = document.createElement("ul");
+    errors.slice(0, 5).forEach(error => {
+      const item = document.createElement("li");
+      item.innerText = `Row ${error.row}: ${error.error}`;
+      list.appendChild(item);
+    });
+    status.appendChild(list);
+  }
 }
