@@ -31,20 +31,63 @@ async function loadDashboard() {
 
     const startStr = formatDateInput(start);
 
-    const trend = await optionalApiCall(`/analytics/trend?start_date=${startStr}&end_date=${date}`, []);
-    const leakage = await optionalApiCall(`/analytics/leakage?start_date=${startStr}&end_date=${date}`, []);
-    const inventory = await optionalApiCall(`/inventory/by-item?date=${date}`, { inventory: [] });
+    drawCanvasMessage("trendChart", "Loading...");
+    drawCanvasMessage("profitChart", "Loading...");
+    drawCanvasMessage("leakageChart", "Loading...");
 
-    // 🔥 Delay ensures DOM is ready
-    setTimeout(() => {
-      renderCharts(trend, leakage);
-      renderInventory(inventory.inventory || []);
+    const trendUrl = `/analytics/trend?start_date=${startStr}&end_date=${date}`;
+    const leakageUrl = `/analytics/leakage?start_date=${startStr}&end_date=${date}`;
+    const inventoryUrl = `/inventory/by-item?date=${date}`;
+
+    const cachedTrend = getCachedResponse(trendUrl);
+    const cachedInventory = getCachedResponse(inventoryUrl);
+    if (cachedTrend) {
+      renderCharts(cachedTrend, []);
+      generateInsights(data, cachedTrend);
+    }
+    if (cachedInventory) renderInventory(cachedInventory.inventory || []);
+
+    optionalApiCall(trendUrl, [], "GET", null, { loader: false, cache: true }).then(trend => {
+      renderCharts(trend, []);
       generateInsights(data, trend);
-    }, 100);
+    });
+    optionalApiCall(leakageUrl, [], "GET", null, { loader: false, cache: true }).then(leakage => {
+      renderLeakageOnly(leakage);
+    });
+    optionalApiCall(inventoryUrl, { inventory: [] }, "GET", null, { loader: false, cache: true }).then(inventory => {
+      renderInventory(inventory.inventory || []);
+    });
 
   } catch (e) {
     console.error(e);
     showToast("Dashboard failed to load");
+  }
+
+  function renderLeakageOnly(leakage) {
+    leakage = Array.isArray(leakage) ? leakage : [];
+    if (typeof Chart === "undefined") {
+      drawCanvasMessage("leakageChart", "Charts are unavailable. Check internet connection.");
+      return;
+    }
+
+    if (dashboardCharts.leakage) {
+      dashboardCharts.leakage.destroy();
+      dashboardCharts.leakage = null;
+    }
+
+    if (leakage.length > 0) {
+      dashboardCharts.leakage = new Chart(document.getElementById("leakageChart"), {
+        type: "line",
+        data: {
+          labels: leakage.map(d => d.date),
+          datasets: [
+            { label: "Leakage", data: leakage.map(d => d.leakage || 0) }
+          ]
+        }
+      });
+    } else {
+      drawCanvasMessage("leakageChart", "No leakage data");
+    }
   }
 }
 

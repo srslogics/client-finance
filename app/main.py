@@ -24,6 +24,11 @@ Base.metadata.create_all(bind=engine)
 def ensure_database_schema():
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS item_type VARCHAR"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_transactions_date_type ON transactions (date, type)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_transactions_party_date ON transactions (party_id, date)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_transactions_item_date ON transactions (item_type, date)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_party_alias_normalized ON party_aliases (normalized_alias)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_daily_stock_date ON daily_stock (date)"))
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS item_opening_stock (
                 id UUID PRIMARY KEY,
@@ -145,6 +150,25 @@ def build_ledger(txns):
     return balance, ledger
 
 
+def build_party_summary(txns, balance):
+    total_sales = sum(Decimal(t.amount or 0) for t in txns if t.type == "SALE")
+    total_purchase = sum(Decimal(t.amount or 0) for t in txns if t.type == "PURCHASE")
+    total_received = sum(Decimal(t.amount or 0) for t in txns if t.type == "PAYMENT" and t.category == "RECEIVED")
+    total_paid = sum(Decimal(t.amount or 0) for t in txns if t.type == "PAYMENT" and t.category == "PAID")
+    opening_balance = sum(Decimal(t.amount or 0) for t in txns if t.type == "OPENING")
+    last_txn = txns[-1] if txns else None
+
+    return {
+        "opening_balance": float(opening_balance),
+        "total_sales": float(total_sales),
+        "total_purchase": float(total_purchase),
+        "total_received": float(total_received),
+        "total_paid": float(total_paid),
+        "current_balance": float(balance),
+        "last_transaction_date": str(last_txn.date) if last_txn else None
+    }
+
+
 def ledger_delta(txn):
     amount = Decimal(txn.amount or 0)
 
@@ -179,6 +203,36 @@ def payable_delta(txn):
         return -amount
 
     return Decimal("0")
+
+
+def receivable_case():
+    return case(
+        (models.Transaction.type == "SALE", models.Transaction.amount),
+        (
+            (models.Transaction.type == "OPENING") & (models.Transaction.category == "RECEIVABLE"),
+            models.Transaction.amount
+        ),
+        (
+            (models.Transaction.type == "PAYMENT") & (models.Transaction.category == "RECEIVED"),
+            -models.Transaction.amount
+        ),
+        else_=0
+    )
+
+
+def payable_case():
+    return case(
+        (models.Transaction.type == "PURCHASE", models.Transaction.amount),
+        (
+            (models.Transaction.type == "OPENING") & (models.Transaction.category == "PAYABLE"),
+            models.Transaction.amount
+        ),
+        (
+            (models.Transaction.type == "PAYMENT") & (models.Transaction.category == "PAID"),
+            -models.Transaction.amount
+        ),
+        else_=0
+    )
 
 
 def row_error(errors, row_number, message):
@@ -1286,6 +1340,7 @@ def get_party_ledger(
             "party_id": party_id,
             "party_name": party.name,
             "total_balance": 0,
+            "summary": build_party_summary([], Decimal("0")),
             "ledger": []
         }
 
@@ -1295,6 +1350,7 @@ def get_party_ledger(
         "party_id": party_id,
         "party_name": party.name,
         "total_balance": float(balance),
+        "summary": build_party_summary(txns, balance),
         "ledger": ledger
     }
 
@@ -1402,20 +1458,23 @@ def get_ledger_by_name(
             return {"error": "Invalid end date"}
         query = query.filter(models.Transaction.date <= end)
 
+    party = db.query(models.Party).filter_by(id=party_id).first()
     txns = query.order_by(models.Transaction.date.asc()).all()
 
     if not txns:
         return {
-            "party_name": name,
+            "party_name": party.name if party else name,
             "total_balance": 0,
+            "summary": build_party_summary([], Decimal("0")),
             "ledger": []
         }
 
     balance, ledger = build_ledger(txns)
 
     return {
-        "party_name": name,
+        "party_name": party.name if party else name,
         "total_balance": float(balance),
+        "summary": build_party_summary(txns, balance),
         "ledger": ledger
     }
 
@@ -1447,12 +1506,6 @@ def get_party_detail(name: str, db: Session = Depends(get_db)):
     ).order_by(models.Transaction.date.asc()).all()
 
     balance, ledger = build_ledger(txns)
-    total_sales = sum(Decimal(t.amount or 0) for t in txns if t.type == "SALE")
-    total_purchase = sum(Decimal(t.amount or 0) for t in txns if t.type == "PURCHASE")
-    total_received = sum(Decimal(t.amount or 0) for t in txns if t.type == "PAYMENT" and t.category == "RECEIVED")
-    total_paid = sum(Decimal(t.amount or 0) for t in txns if t.type == "PAYMENT" and t.category == "PAID")
-    opening_balance = sum(Decimal(t.amount or 0) for t in txns if t.type == "OPENING")
-    last_txn = txns[-1] if txns else None
 
     return {
         "party": {
@@ -1460,15 +1513,7 @@ def get_party_detail(name: str, db: Session = Depends(get_db)):
             "name": party.name,
             "type": party.type
         },
-        "summary": {
-            "opening_balance": float(opening_balance),
-            "total_sales": float(total_sales),
-            "total_purchase": float(total_purchase),
-            "total_received": float(total_received),
-            "total_paid": float(total_paid),
-            "current_balance": float(balance),
-            "last_transaction_date": str(last_txn.date) if last_txn else None
-        },
+        "summary": build_party_summary(txns, balance),
         "ledger": ledger
     }
 
@@ -1732,26 +1777,49 @@ def get_dashboard(date: str, db: Session = Depends(get_db)):
         return {"error": "Invalid date format"}
 
     try:
-        # --- Purchase ---
-        purchase = db.query(func.sum(models.Transaction.amount)).filter(
-            models.Transaction.date == target_date,
-            models.Transaction.type == "PURCHASE"
-        ).scalar() or 0
+        totals = db.query(
+            func.sum(
+                case(
+                    (models.Transaction.type == "SALE", models.Transaction.amount),
+                    else_=0
+                )
+            ).label("sales"),
+            func.sum(
+                case(
+                    (models.Transaction.type == "PURCHASE", models.Transaction.amount),
+                    else_=0
+                )
+            ).label("purchase"),
+            func.sum(receivable_case()).label("receivable"),
+            func.sum(payable_case()).label("payable")
+        ).first()
 
-        # --- Sales ---
-        sales = db.query(func.sum(models.Transaction.amount)).filter(
-            models.Transaction.date == target_date,
-            models.Transaction.type == "SALE"
-        ).scalar() or 0
+        daily_totals = db.query(
+            func.sum(
+                case(
+                    (models.Transaction.type == "SALE", models.Transaction.amount),
+                    else_=0
+                )
+            ).label("sales"),
+            func.sum(
+                case(
+                    (models.Transaction.type == "PURCHASE", models.Transaction.amount),
+                    else_=0
+                )
+            ).label("purchase")
+        ).filter(
+            models.Transaction.date == target_date
+        ).first()
+
+        sales = daily_totals.sales or 0
+        purchase = daily_totals.purchase or 0
+        receivable = totals.receivable or 0
+        payable = totals.payable or 0
 
         # --- Stock ---
         stock = db.query(models.DailyStock).filter(
             models.DailyStock.date == target_date
         ).first()
-
-        txns = db.query(models.Transaction).all()
-        receivable = sum(receivable_delta(t) for t in txns)
-        payable = sum(payable_delta(t) for t in txns)
 
         # --- Profit (simple approximation) ---
         profit = float(sales or 0) - float(purchase or 0)
@@ -1778,40 +1846,54 @@ def get_dashboard(date: str, db: Session = Depends(get_db)):
 
 @app.get("/top-debtors")
 def top_debtors(db: Session = Depends(get_db)):
-    result = []
-    parties = db.query(models.Party).all()
+    balance_expr = func.sum(receivable_case())
+    rows = db.query(
+        models.Party.name,
+        balance_expr.label("balance")
+    ).join(
+        models.Transaction,
+        models.Transaction.party_id == models.Party.id
+    ).group_by(
+        models.Party.id,
+        models.Party.name
+    ).having(
+        balance_expr > 0
+    ).order_by(
+        balance_expr.desc()
+    ).limit(5).all()
 
-    for party in parties:
-        txns = db.query(models.Transaction).filter_by(party_id=party.id).all()
-        balance = sum(receivable_delta(t) for t in txns)
-        if balance > 0:
-            result.append({
-                "party_name": party.name,
-                "balance": float(balance)
-            })
-
-    result = sorted(result, key=lambda row: row["balance"], reverse=True)[:5]
-
-    return {"top_debtors": result}
+    return {
+        "top_debtors": [
+            {"party_name": row.name, "balance": float(row.balance or 0)}
+            for row in rows
+        ]
+    }
 
 
 @app.get("/top-payables")
 def top_payables(db: Session = Depends(get_db)):
-    result = []
-    parties = db.query(models.Party).all()
+    balance_expr = func.sum(payable_case())
+    rows = db.query(
+        models.Party.name,
+        balance_expr.label("balance")
+    ).join(
+        models.Transaction,
+        models.Transaction.party_id == models.Party.id
+    ).group_by(
+        models.Party.id,
+        models.Party.name
+    ).having(
+        balance_expr > 0
+    ).order_by(
+        balance_expr.desc()
+    ).limit(5).all()
 
-    for party in parties:
-        txns = db.query(models.Transaction).filter_by(party_id=party.id).all()
-        balance = sum(payable_delta(t) for t in txns)
-        if balance > 0:
-            result.append({
-                "party_name": party.name,
-                "balance": float(balance)
-            })
-
-    result = sorted(result, key=lambda row: row["balance"], reverse=True)[:5]
-
-    return {"top_payables": result}
+    return {
+        "top_payables": [
+            {"party_name": row.name, "balance": float(row.balance or 0)}
+            for row in rows
+        ]
+    }
 
 
 @app.get("/analytics/trend")
@@ -1889,19 +1971,48 @@ def analytics_summary(start_date: str, end_date: str, db: Session = Depends(get_
     if not start or not end:
         return {"error": "Invalid date format"}
 
-    txns = db.query(models.Transaction).filter(
+    totals = db.query(
+        func.sum(
+            case(
+                (models.Transaction.type == "SALE", models.Transaction.amount),
+                else_=0
+            )
+        ).label("sales"),
+        func.sum(
+            case(
+                (models.Transaction.type == "PURCHASE", models.Transaction.amount),
+                else_=0
+            )
+        ).label("purchase"),
+        func.sum(
+            case(
+                (
+                    (models.Transaction.type == "PAYMENT") & (models.Transaction.category == "RECEIVED"),
+                    models.Transaction.amount
+                ),
+                else_=0
+            )
+        ).label("received"),
+        func.sum(
+            case(
+                (
+                    (models.Transaction.type == "PAYMENT") & (models.Transaction.category == "PAID"),
+                    models.Transaction.amount
+                ),
+                else_=0
+            )
+        ).label("paid")
+    ).filter(
         models.Transaction.date.between(start, end)
-    ).all()
+    ).first()
 
-    sales = sum(Decimal(t.amount or 0) for t in txns if t.type == "SALE")
-    purchase = sum(Decimal(t.amount or 0) for t in txns if t.type == "PURCHASE")
-    received = sum(Decimal(t.amount or 0) for t in txns if t.type == "PAYMENT" and t.category == "RECEIVED")
-    paid = sum(Decimal(t.amount or 0) for t in txns if t.type == "PAYMENT" and t.category == "PAID")
-
-    stock_rows = db.query(models.DailyItemStock).filter(
+    sales = Decimal(totals.sales or 0)
+    purchase = Decimal(totals.purchase or 0)
+    received = Decimal(totals.received or 0)
+    paid = Decimal(totals.paid or 0)
+    leakage = db.query(func.sum(models.DailyItemStock.leakage)).filter(
         models.DailyItemStock.date.between(start, end)
-    ).all()
-    leakage = sum(Decimal(row.leakage or 0) for row in stock_rows)
+    ).scalar() or 0
 
     return {
         "sales": float(sales),
@@ -1921,28 +2032,36 @@ def item_volume(start_date: str, end_date: str, db: Session = Depends(get_db)):
     if not start or not end:
         return {"error": "Invalid date format"}
 
-    txns = db.query(models.Transaction).filter(
+    rows = db.query(
+        models.Transaction.item_type.label("item"),
+        func.sum(
+            case(
+                (models.Transaction.type == "PURCHASE", models.Transaction.weight),
+                else_=0
+            )
+        ).label("purchase_kg"),
+        func.sum(
+            case(
+                (models.Transaction.type == "SALE", models.Transaction.weight),
+                else_=0
+            )
+        ).label("sales_kg")
+    ).filter(
         models.Transaction.date.between(start, end),
         models.Transaction.item_type.isnot(None)
+    ).group_by(
+        models.Transaction.item_type
+    ).order_by(
+        models.Transaction.item_type.asc()
     ).all()
-
-    by_item = {}
-    for txn in txns:
-        item = txn.item_type or "Unknown"
-        by_item.setdefault(item, {"item": item, "purchase_kg": Decimal("0"), "sales_kg": Decimal("0")})
-
-        if txn.type == "PURCHASE":
-            by_item[item]["purchase_kg"] += Decimal(txn.weight or 0)
-        elif txn.type == "SALE":
-            by_item[item]["sales_kg"] += Decimal(txn.weight or 0)
 
     return [
         {
-            "item": row["item"],
-            "purchase_kg": float(row["purchase_kg"]),
-            "sales_kg": float(row["sales_kg"])
+            "item": row.item,
+            "purchase_kg": float(row.purchase_kg or 0),
+            "sales_kg": float(row.sales_kg or 0)
         }
-        for row in sorted(by_item.values(), key=lambda value: value["item"])
+        for row in rows
     ]
 
 
@@ -1953,29 +2072,36 @@ def payment_modes(start_date: str, end_date: str, db: Session = Depends(get_db))
     if not start or not end:
         return {"error": "Invalid date format"}
 
-    txns = db.query(models.Transaction).filter(
+    mode = func.coalesce(models.Transaction.payment_mode, "NA").label("mode")
+    rows = db.query(
+        mode,
+        func.sum(
+            case(
+                (models.Transaction.category == "RECEIVED", models.Transaction.amount),
+                else_=0
+            )
+        ).label("received"),
+        func.sum(
+            case(
+                (models.Transaction.category == "PAID", models.Transaction.amount),
+                else_=0
+            )
+        ).label("paid")
+    ).filter(
         models.Transaction.date.between(start, end),
         models.Transaction.type == "PAYMENT"
+    ).group_by(
+        mode
     ).all()
-
-    by_mode = {}
-    for txn in txns:
-        mode = txn.payment_mode or "NA"
-        by_mode.setdefault(mode, {"mode": mode, "received": Decimal("0"), "paid": Decimal("0")})
-
-        if txn.category == "RECEIVED":
-            by_mode[mode]["received"] += Decimal(txn.amount or 0)
-        elif txn.category == "PAID":
-            by_mode[mode]["paid"] += Decimal(txn.amount or 0)
 
     return [
         {
-            "mode": row["mode"],
-            "received": float(row["received"]),
-            "paid": float(row["paid"]),
-            "total": float(row["received"] + row["paid"])
+            "mode": row.mode,
+            "received": float(row.received or 0),
+            "paid": float(row.paid or 0),
+            "total": float((row.received or 0) + (row.paid or 0))
         }
-        for row in sorted(by_mode.values(), key=lambda value: value["total"], reverse=True)
+        for row in sorted(rows, key=lambda value: (value.received or 0) + (value.paid or 0), reverse=True)
     ]
 
 
@@ -1994,12 +2120,35 @@ def inventory_by_item(date: str, db: Session = Depends(get_db)):
             items.add(row.item_type)
 
     result = []
+    processed_by_item = {
+        row.item_type: row
+        for row in db.query(models.DailyItemStock).filter(
+            models.DailyItemStock.date == target_date
+        ).all()
+    }
+
+    openings_by_item = {}
+    openings = db.query(models.ItemOpeningStock).filter(
+        models.ItemOpeningStock.date <= target_date
+    ).order_by(
+        models.ItemOpeningStock.item_type.asc(),
+        models.ItemOpeningStock.date.desc()
+    ).all()
+
+    for opening in openings:
+        openings_by_item.setdefault(opening.item_type, opening)
+
+    txns_by_item = {}
+    txns = db.query(models.Transaction).filter(
+        models.Transaction.date <= target_date,
+        models.Transaction.item_type.isnot(None)
+    ).all()
+
+    for txn in txns:
+        txns_by_item.setdefault(txn.item_type, []).append(txn)
 
     for item in sorted(items):
-        processed = db.query(models.DailyItemStock).filter_by(
-            date=target_date,
-            item_type=item
-        ).first()
+        processed = processed_by_item.get(item)
 
         if processed:
             result.append({
@@ -2015,25 +2164,17 @@ def inventory_by_item(date: str, db: Session = Depends(get_db)):
             })
             continue
 
-        opening = db.query(models.ItemOpeningStock).filter(
-            models.ItemOpeningStock.item_type == item,
-            models.ItemOpeningStock.date <= target_date
-        ).order_by(models.ItemOpeningStock.date.desc()).first()
+        opening = openings_by_item.get(item)
 
         opening_date = opening.date if opening else None
         opening_weight = Decimal(opening.opening_weight or 0) if opening else Decimal("0")
 
-        query = db.query(models.Transaction).filter(
-            models.Transaction.item_type == item,
-            models.Transaction.date <= target_date
-        )
-
+        item_txns = txns_by_item.get(item, [])
         if opening_date:
-            query = query.filter(models.Transaction.date >= opening_date)
+            item_txns = [txn for txn in item_txns if txn.date >= opening_date]
 
-        txns = query.all()
-        purchase_weight = sum(Decimal(t.weight or 0) for t in txns if t.type == "PURCHASE")
-        sales_weight = sum(Decimal(t.weight or 0) for t in txns if t.type == "SALE")
+        purchase_weight = sum(Decimal(t.weight or 0) for t in item_txns if t.type == "PURCHASE")
+        sales_weight = sum(Decimal(t.weight or 0) for t in item_txns if t.type == "SALE")
         closing_weight = opening_weight + purchase_weight - sales_weight
 
         result.append({
@@ -2079,29 +2220,37 @@ def profit_by_item(start_date: str, end_date: str, db: Session = Depends(get_db)
     if not start or not end:
         return {"error": "Invalid date format"}
 
-    txns = db.query(models.Transaction).filter(
+    rows = db.query(
+        models.Transaction.item_type.label("item"),
+        func.sum(
+            case(
+                (models.Transaction.type == "SALE", models.Transaction.amount),
+                else_=0
+            )
+        ).label("sales"),
+        func.sum(
+            case(
+                (models.Transaction.type == "PURCHASE", models.Transaction.amount),
+                else_=0
+            )
+        ).label("purchase")
+    ).filter(
         models.Transaction.date.between(start, end),
         models.Transaction.item_type.isnot(None)
+    ).group_by(
+        models.Transaction.item_type
+    ).order_by(
+        models.Transaction.item_type.asc()
     ).all()
-
-    by_item = {}
-    for txn in txns:
-        item = txn.item_type or "Unknown"
-        by_item.setdefault(item, {"item": item, "sales": Decimal("0"), "purchase": Decimal("0")})
-
-        if txn.type == "SALE":
-            by_item[item]["sales"] += Decimal(txn.amount or 0)
-        elif txn.type == "PURCHASE":
-            by_item[item]["purchase"] += Decimal(txn.amount or 0)
 
     return [
         {
-            "item": row["item"],
-            "sales": float(row["sales"]),
-            "purchase": float(row["purchase"]),
-            "profit": float(row["sales"] - row["purchase"])
+            "item": row.item,
+            "sales": float(row.sales or 0),
+            "purchase": float(row.purchase or 0),
+            "profit": float((row.sales or 0) - (row.purchase or 0))
         }
-        for row in by_item.values()
+        for row in rows
     ]
 
 if __name__ == "__main__":

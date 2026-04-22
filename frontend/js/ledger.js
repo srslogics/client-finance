@@ -30,7 +30,6 @@ async function searchLedger() {
       if (endDate) params.set("end_date", endDate);
 
       const data = await apiCall(`/party/ledger?${params.toString()}`);
-      const detail = await optionalApiCall(`/party/detail?name=${encodeURIComponent(name)}`, null);
 
       if (data.error) {
         body.innerHTML = `<tr><td colspan="7" class="empty"></td></tr>`;
@@ -56,7 +55,7 @@ async function searchLedger() {
 
       // --- Total balance
       total.innerText = formatMoney(data.total_balance);
-      renderPartySummary(detail);
+      renderPartySummary(data.summary ? { summary: data.summary } : null);
 
       // --- Populate table
       body.innerHTML = "";

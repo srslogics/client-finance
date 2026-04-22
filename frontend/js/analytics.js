@@ -23,27 +23,32 @@ async function loadAnalytics() {
     return;
   }
 
-  try {
+  resetAnalyticsView();
 
-    // --- Fetch data ---
-    const trend = await optionalApiCall(`/analytics/trend?start_date=${start}&end_date=${end}`, []);
-    const summary = await optionalApiCall(`/analytics/summary?start_date=${start}&end_date=${end}`, null);
-    const leakage = await optionalApiCall(`/analytics/leakage?start_date=${start}&end_date=${end}`, []);
-    const debtors = await optionalApiCall("/top-debtors", { top_debtors: [] });
-    const profitByItem = await optionalApiCall(`/analytics/profit-by-item?start_date=${start}&end_date=${end}`, []);
-    const itemVolume = await optionalApiCall(`/analytics/item-volume?start_date=${start}&end_date=${end}`, []);
-    const paymentModes = await optionalApiCall(`/analytics/payment-modes?start_date=${start}&end_date=${end}`, []);
+  const endpoints = {
+    trend: `/analytics/trend?start_date=${start}&end_date=${end}`,
+    summary: `/analytics/summary?start_date=${start}&end_date=${end}`,
+    leakage: `/analytics/leakage?start_date=${start}&end_date=${end}`,
+    debtors: "/top-debtors",
+    profitByItem: `/analytics/profit-by-item?start_date=${start}&end_date=${end}`,
+    itemVolume: `/analytics/item-volume?start_date=${start}&end_date=${end}`,
+    paymentModes: `/analytics/payment-modes?start_date=${start}&end_date=${end}`
+  };
 
-    // 🔥 Delay ensures DOM is ready
-    setTimeout(() => {
-      renderAnalyticsSummary(summary);
-      renderAnalyticsCharts(trend, leakage, debtors, profitByItem, itemVolume, paymentModes);
-    }, 100);
+  const cachedTrend = getCachedResponse(endpoints.trend);
+  const cachedSummary = getCachedResponse(endpoints.summary);
+  if (cachedSummary) renderAnalyticsSummary(cachedSummary);
+  if (cachedTrend) renderTrendCharts(cachedTrend);
 
-  } catch (e) {
-    console.error(e);
-    showToast("Analytics failed to load");
-  }
+  showToast(cachedTrend ? "Refreshing analytics..." : "Loading analytics...");
+
+  loadAnalyticsPart(endpoints.summary, null, renderAnalyticsSummary);
+  loadAnalyticsPart(endpoints.trend, [], renderTrendCharts);
+  loadAnalyticsPart(endpoints.leakage, [], renderLeakageChart);
+  loadAnalyticsPart(endpoints.debtors, { top_debtors: [] }, renderDebtorChart);
+  loadAnalyticsPart(endpoints.profitByItem, [], renderProfitByItemChart);
+  loadAnalyticsPart(endpoints.itemVolume, [], renderItemVolumeChart);
+  loadAnalyticsPart(endpoints.paymentModes, [], renderPaymentModeChart);
 }
 
 function renderAnalyticsSummary(summary) {
@@ -55,27 +60,37 @@ function renderAnalyticsSummary(summary) {
   setText("analyticsCash", formatMoney(summary.net_cash));
 }
 
-function renderAnalyticsCharts(trend, leakage, debtors, profitByItem, itemVolume, paymentModes) {
+async function loadAnalyticsPart(url, fallback, renderer) {
+  try {
+    const data = await optionalApiCall(url, fallback, "GET", null, { loader: false, cache: true });
+    renderer(data);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function resetAnalyticsView() {
     destroyAnalyticsCharts();
 
-    trend = Array.isArray(trend) ? trend : [];
-    leakage = Array.isArray(leakage) ? leakage : [];
-    profitByItem = Array.isArray(profitByItem) ? profitByItem : [];
-    itemVolume = Array.isArray(itemVolume) ? itemVolume : [];
-    paymentModes = Array.isArray(paymentModes) ? paymentModes : [];
-    const topDebtors = Array.isArray(debtors?.top_debtors) ? debtors.top_debtors : [];
+    ["trendChart", "cashFlowChart", "leakageChart", "itemVolumeChart", "debtorChart", "paymentModeChart", "profitByItemChart"].forEach(id => {
+      drawCanvasMessage(id, "Loading...");
+    });
+}
 
+function canRenderCharts(chartIds) {
     if (typeof Chart === "undefined") {
-      drawCanvasMessage("trendChart", "Charts are unavailable. Check internet connection.");
-      drawCanvasMessage("cashFlowChart", "Charts are unavailable. Check internet connection.");
-      drawCanvasMessage("leakageChart", "Charts are unavailable. Check internet connection.");
-      drawCanvasMessage("itemVolumeChart", "Charts are unavailable. Check internet connection.");
-      drawCanvasMessage("debtorChart", "Charts are unavailable. Check internet connection.");
-      drawCanvasMessage("paymentModeChart", "Charts are unavailable. Check internet connection.");
-      drawCanvasMessage("profitByItemChart", "Charts are unavailable. Check internet connection.");
-      return;
+      chartIds.forEach(id => drawCanvasMessage(id, "Charts are unavailable. Check internet connection."));
+      return false;
     }
+    return true;
+}
 
+function renderTrendCharts(trend) {
+    trend = Array.isArray(trend) ? trend : [];
+    if (!canRenderCharts(["trendChart", "cashFlowChart"])) return;
+
+    destroyChart("trend");
+    destroyChart("cashFlow");
     const dates = trend.map(d => d.date);
     const sales = trend.map(d => d.sales || 0);
     const purchase = trend.map(d => d.purchase || 0);
@@ -116,8 +131,13 @@ function renderAnalyticsCharts(trend, leakage, debtors, profitByItem, itemVolume
     } else {
       drawCanvasMessage("cashFlowChart", "No cash movement data");
     }
+}
 
-    // --- Leakage Chart ---
+function renderLeakageChart(leakage) {
+    leakage = Array.isArray(leakage) ? leakage : [];
+    if (!canRenderCharts(["leakageChart"])) return;
+
+    destroyChart("leakage");
     if (leakage && leakage.length > 0) {
       analyticsCharts.leakage = new Chart(document.getElementById("leakageChart"), {
         type: "line",
@@ -135,7 +155,13 @@ function renderAnalyticsCharts(trend, leakage, debtors, profitByItem, itemVolume
     } else {
       drawCanvasMessage("leakageChart", "No leakage data");
     }
+}
 
+function renderItemVolumeChart(itemVolume) {
+    itemVolume = Array.isArray(itemVolume) ? itemVolume : [];
+    if (!canRenderCharts(["itemVolumeChart"])) return;
+
+    destroyChart("itemVolume");
     if (itemVolume.length > 0) {
       analyticsCharts.itemVolume = new Chart(document.getElementById("itemVolumeChart"), {
         type: "bar",
@@ -154,8 +180,13 @@ function renderAnalyticsCharts(trend, leakage, debtors, profitByItem, itemVolume
     } else {
       drawCanvasMessage("itemVolumeChart", "No hen-type volume data");
     }
+}
 
-    // --- Debtors Chart ---
+function renderDebtorChart(debtors) {
+    const topDebtors = Array.isArray(debtors?.top_debtors) ? debtors.top_debtors : [];
+    if (!canRenderCharts(["debtorChart"])) return;
+
+    destroyChart("debtor");
     if (topDebtors.length > 0) {
       analyticsCharts.debtor = new Chart(document.getElementById("debtorChart"), {
         type: "bar",
@@ -171,7 +202,13 @@ function renderAnalyticsCharts(trend, leakage, debtors, profitByItem, itemVolume
     } else {
       drawCanvasMessage("debtorChart", "No outstanding parties");
     }
+}
 
+function renderPaymentModeChart(paymentModes) {
+    paymentModes = Array.isArray(paymentModes) ? paymentModes : [];
+    if (!canRenderCharts(["paymentModeChart"])) return;
+
+    destroyChart("paymentMode");
     if (paymentModes.length > 0) {
       analyticsCharts.paymentMode = new Chart(document.getElementById("paymentModeChart"), {
         type: "doughnut",
@@ -187,7 +224,13 @@ function renderAnalyticsCharts(trend, leakage, debtors, profitByItem, itemVolume
     } else {
       drawCanvasMessage("paymentModeChart", "No payment mode data");
     }
+}
 
+function renderProfitByItemChart(profitByItem) {
+    profitByItem = Array.isArray(profitByItem) ? profitByItem : [];
+    if (!canRenderCharts(["profitByItemChart"])) return;
+
+    destroyChart("profitByItem");
     if (profitByItem && profitByItem.length > 0) {
       analyticsCharts.profitByItem = new Chart(document.getElementById("profitByItemChart"), {
         type: "bar",
@@ -203,7 +246,7 @@ function renderAnalyticsCharts(trend, leakage, debtors, profitByItem, itemVolume
     } else {
       drawCanvasMessage("profitByItemChart", "No item profit data");
     }
-  }
+}
 
 function destroyAnalyticsCharts() {
   Object.keys(analyticsCharts).forEach(key => {
@@ -212,6 +255,13 @@ function destroyAnalyticsCharts() {
       analyticsCharts[key] = null;
     }
   });
+}
+
+function destroyChart(key) {
+  if (analyticsCharts[key]) {
+    analyticsCharts[key].destroy();
+    analyticsCharts[key] = null;
+  }
 }
 
 function setText(id, value) {

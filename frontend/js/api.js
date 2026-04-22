@@ -6,9 +6,22 @@ const BASE_URL = (
 ).replace(/\/$/, "");
 
 let activeRequests = 0;
+const responseCache = new Map();
+const CACHE_TTL = 60 * 1000;
 
-async function apiCall(url, method = "GET", body = null, headers = {}) {
-    showLoading(requestMessage(method, url));
+async function apiCall(url, method = "GET", body = null, headers = {}, apiOptions = {}) {
+    const shouldShowLoader = apiOptions.loader === true || method !== "GET";
+    const useCache = apiOptions.cache === true && method === "GET";
+    const cacheKey = `${method}:${url}`;
+
+    if (useCache) {
+      const cached = responseCache.get(cacheKey);
+      if (cached && Date.now() - cached.time < CACHE_TTL) {
+        return cached.data;
+      }
+    }
+
+    if (shouldShowLoader) showLoading(requestMessage(method, url));
 
     const options = {
       method: method,
@@ -32,15 +45,19 @@ async function apiCall(url, method = "GET", body = null, headers = {}) {
         console.warn("API returned an error:", data.error);
       }
 
+      if (useCache) {
+        responseCache.set(cacheKey, { data, time: Date.now() });
+      }
+
       return data;
     } finally {
-      hideLoading();
+      if (shouldShowLoader) hideLoading();
     }
   }
 
-async function optionalApiCall(url, fallback, method = "GET", body = null) {
+async function optionalApiCall(url, fallback, method = "GET", body = null, options = {}) {
   try {
-    return await apiCall(url, method, body);
+    return await apiCall(url, method, body, {}, { loader: false, cache: method === "GET", ...options });
   } catch (e) {
     console.warn(`Optional API unavailable: ${url}`, e);
     return fallback;
@@ -101,6 +118,12 @@ async function withLoading(message, callback) {
   } finally {
     hideLoading();
   }
+}
+
+function getCachedResponse(url, method = "GET") {
+  const cached = responseCache.get(`${method}:${url}`);
+  if (!cached || Date.now() - cached.time >= CACHE_TTL) return null;
+  return cached.data;
 }
 
 function requestMessage(method, url) {
