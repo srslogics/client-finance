@@ -21,8 +21,18 @@ function loadPage(page) {
       content.innerHTML = `
         <div class="container">
 
+          <div class="page-intro">
+            <span>Daily Operations</span>
+            <h2>Upload, validate, and process the day</h2>
+          </div>
+
           <div class="section">
-            <h2>Daily Templates</h2>
+            <div class="section-head">
+              <div>
+                <span>Step 1</span>
+                <h2>Download Daily Templates</h2>
+              </div>
+            </div>
             <div class="upload-box">
               <button onclick="downloadTemplate('dealer')">Dealer Purchase</button>
               <button onclick="downloadTemplate('vendor')">Vendor Sales</button>
@@ -33,7 +43,12 @@ function loadPage(page) {
           <div id="uploadStatus" class="notice" aria-live="polite"></div>
 
           <div class="section">
-            <h2>1. Dealer Purchase File</h2>
+            <div class="section-head">
+              <div>
+                <span>Step 2</span>
+                <h2>Dealer Purchase File</h2>
+              </div>
+            </div>
             <div class="upload-box">
               <input type="file" id="dealerFile" accept=".csv,.xls,.xlsx">
               <button onclick="previewDealer()">Preview</button>
@@ -42,7 +57,12 @@ function loadPage(page) {
           </div>
 
           <div class="section">
-            <h2>2. Vendor Sales File</h2>
+            <div class="section-head">
+              <div>
+                <span>Step 3</span>
+                <h2>Vendor Sales File</h2>
+              </div>
+            </div>
             <div class="upload-box">
               <input type="file" id="vendorFile" accept=".csv,.xls,.xlsx">
               <button onclick="previewVendor()">Preview</button>
@@ -51,7 +71,12 @@ function loadPage(page) {
           </div>
 
           <div class="section">
-            <h2>3. Payment File</h2>
+            <div class="section-head">
+              <div>
+                <span>Step 4</span>
+                <h2>Payment File</h2>
+              </div>
+            </div>
             <div class="upload-box">
               <input type="file" id="paymentFile" accept=".csv,.xls,.xlsx">
               <button onclick="previewPayment()">Preview</button>
@@ -60,7 +85,12 @@ function loadPage(page) {
           </div>
 
           <div class="section">
-            <h2>Process Day</h2>
+            <div class="section-head">
+              <div>
+                <span>Step 5</span>
+                <h2>Process Day</h2>
+              </div>
+            </div>
             <div class="upload-box process-day-controls">
               <input type="date" id="processDate">
             </div>
@@ -78,7 +108,12 @@ function loadPage(page) {
           </div>
 
           <div class="section">
-            <h2>Initial Setup Templates</h2>
+            <div class="section-head">
+              <div>
+                <span>Initial Setup</span>
+                <h2>Opening Templates</h2>
+              </div>
+            </div>
             <div class="upload-box">
               <button onclick="downloadTemplate('opening-balance')">Opening Balance</button>
               <button onclick="downloadTemplate('opening-stock')">Opening Stock</button>
@@ -119,12 +154,17 @@ function loadPage(page) {
       content.innerHTML = `
         <div class="container">
 
-          <div class="card filter">
+          <div class="page-intro">
+            <span>Executive View</span>
+            <h2>Revenue, stock movement, leakage, and outstanding balances</h2>
+          </div>
+
+          <div class="card filter toolbar">
             <input type="date" id="dashboardDate">
             <button onclick="loadDashboard()">Load</button>
           </div>
 
-          <div class="grid">
+          <div class="grid kpi-grid">
             <div class="metric blue">
               <span>Revenue</span>
               <h2 id="sales">₹ 0</h2>
@@ -161,19 +201,21 @@ function loadPage(page) {
             </div>
           </div>
 
-          <div class="card">
+          <div class="chart-grid">
+          <div class="card chart-card">
             <h2>Sales vs Purchase Trend</h2>
             <canvas id="trendChart"></canvas>
           </div>
 
-          <div class="card">
+          <div class="card chart-card">
             <h2>Profit Trend</h2>
             <canvas id="profitChart"></canvas>
           </div>
 
-          <div class="card">
+          <div class="card chart-card">
             <h2>Leakage Trend</h2>
             <canvas id="leakageChart"></canvas>
+          </div>
           </div>
 
           <div class="card insights">
@@ -219,7 +261,12 @@ function loadPage(page) {
       content.innerHTML = `
         <div class="container">
 
-          <div class="card search-card">
+          <div class="page-intro">
+            <span>Party Ledger</span>
+            <h2>Search customer, hotel, shop, or dealer balances</h2>
+          </div>
+
+          <div class="card search-card toolbar">
             <input type="text" id="party" placeholder="Search party..." list="partySuggestions" autocomplete="off" oninput="suggestParties()">
             <datalist id="partySuggestions"></datalist>
             <input type="date" id="ledgerStartDate" aria-label="Ledger start date">
@@ -268,30 +315,37 @@ function loadPage(page) {
       content.innerHTML = `
         <div class="container">
 
-          <div class="card filter">
+          <div class="page-intro">
+            <span>Performance Review</span>
+            <h2>Track sales, leakage, debtors, and hen-type profitability</h2>
+          </div>
+
+          <div class="card filter toolbar">
             <input type="date" id="startDate">
             <input type="date" id="endDate">
             <button onclick="loadAnalytics()">Load</button>
           </div>
 
-          <div class="card">
+          <div class="chart-grid">
+          <div class="card chart-card">
             <h2>Sales vs Purchase Trend</h2>
             <canvas id="trendChart"></canvas>
           </div>
 
-          <div class="card">
+          <div class="card chart-card">
             <h2>Leakage Trend</h2>
             <canvas id="leakageChart"></canvas>
           </div>
 
-          <div class="card">
+          <div class="card chart-card">
             <h2>Top Debtors</h2>
             <canvas id="debtorChart"></canvas>
           </div>
 
-          <div class="card">
+          <div class="card chart-card">
             <h2>Profit By Hen Type</h2>
             <canvas id="profitByItemChart"></canvas>
+          </div>
           </div>
 
         </div>
@@ -317,8 +371,18 @@ function loadPage(page) {
       content.innerHTML = `
         <div class="container">
 
+          <div class="page-intro">
+            <span>Exports</span>
+            <h2>Download financial records for review, audit, and client sharing</h2>
+          </div>
+
           <div class="section">
-            <h2>Download Financial Records</h2>
+            <div class="section-head">
+              <div>
+                <span>Report Builder</span>
+                <h2>Download Financial Records</h2>
+              </div>
+            </div>
             <div class="report-form">
               <select id="reportType" onchange="toggleReportFields()">
                 <option value="ledger">Party Ledger</option>
@@ -342,7 +406,7 @@ function loadPage(page) {
             </div>
           </div>
 
-          <div class="grid">
+          <div class="grid report-summary-grid">
             <div class="metric blue">
               <span>Party Ledger</span>
               <h2>Client-wise</h2>
@@ -374,6 +438,8 @@ function loadPage(page) {
         toggleReportFields();
       }, 100);
     }
+
+    refreshIcons();
   }
 
   // --- Initial load
@@ -405,6 +471,12 @@ function loadPage(page) {
     ctx.fillStyle = "#8792a7";
     ctx.textAlign = "center";
     ctx.fillText(message, width / 2, height / 2);
+  }
+
+  function refreshIcons() {
+    if (window.lucide && typeof window.lucide.createIcons === "function") {
+      window.lucide.createIcons();
+    }
   }
 
   let toastTimer = null;

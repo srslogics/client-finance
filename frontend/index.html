@@ -17,8 +17,9 @@
   <!-- Styles -->
   <link rel="stylesheet" href="css/style.css">
 
-  <!-- Chart.js -->
+  <!-- Charts & icons -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 
 <body>
@@ -36,11 +37,11 @@
     </div>
 
     <nav class="menu" aria-label="Primary navigation">
-      <button type="button" id="menu-dashboard" onclick="loadPage('dashboard')">Dashboard</button>
-      <button type="button" id="menu-upload" onclick="loadPage('upload')">Upload</button>
-      <button type="button" id="menu-analytics" onclick="loadPage('analytics')">Analytics</button>
-      <button type="button" id="menu-ledger" onclick="loadPage('ledger')">Ledger</button>
-      <button type="button" id="menu-reports" onclick="loadPage('reports')">Reports</button>
+      <button type="button" id="menu-dashboard" onclick="loadPage('dashboard')"><i data-lucide="layout-dashboard"></i><span>Dashboard</span></button>
+      <button type="button" id="menu-upload" onclick="loadPage('upload')"><i data-lucide="upload-cloud"></i><span>Upload</span></button>
+      <button type="button" id="menu-analytics" onclick="loadPage('analytics')"><i data-lucide="chart-no-axes-combined"></i><span>Analytics</span></button>
+      <button type="button" id="menu-ledger" onclick="loadPage('ledger')"><i data-lucide="book-open-check"></i><span>Ledger</span></button>
+      <button type="button" id="menu-reports" onclick="loadPage('reports')"><i data-lucide="file-down"></i><span>Reports</span></button>
     </nav>
   </aside>
 
