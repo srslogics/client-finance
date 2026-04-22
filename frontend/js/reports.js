@@ -54,7 +54,9 @@ async function downloadReport(format) {
 
   try {
     toggleButtons(true);
-    const response = await fetch(`${BASE_URL}/reports/export?${params.toString()}`);
+    const response = await withLoading("Preparing report...", () => (
+      fetch(`${BASE_URL}/reports/export?${params.toString()}`)
+    ));
 
     if (!response.ok) {
       throw new Error(`Report failed: ${response.status}`);

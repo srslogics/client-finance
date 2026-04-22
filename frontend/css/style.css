@@ -151,6 +151,23 @@ button:disabled {
   transform: none;
 }
 
+button.is-loading {
+  position: relative;
+  color: transparent;
+  opacity: 0.78;
+}
+
+button.is-loading::after {
+  content: "";
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgb(255 255 255 / 0.4);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
 button:focus-visible,
 input:focus-visible,
 select:focus-visible {
@@ -624,6 +641,49 @@ canvas {
   color: white;
   box-shadow: 0 18px 50px rgb(15 23 42 / 0.28);
   font-weight: 650;
+}
+
+.global-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: none;
+  place-items: center;
+  background: rgb(11 18 32 / 0.16);
+  backdrop-filter: blur(2px);
+  pointer-events: none;
+}
+
+.global-loader.show {
+  display: grid;
+}
+
+.loader-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 220px;
+  padding: 16px 18px;
+  border: 1px solid rgb(255 255 255 / 0.6);
+  border-radius: 14px;
+  background: rgb(255 255 255 / 0.94);
+  color: var(--ink);
+  box-shadow: 0 22px 60px rgb(15 23 42 / 0.2);
+}
+
+.loader-spinner {
+  width: 22px;
+  height: 22px;
+  border: 3px solid rgb(183 121 31 / 0.18);
+  border-top-color: var(--brand);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (max-width: 760px) {

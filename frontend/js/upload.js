@@ -107,6 +107,8 @@ async function handleUpload(inputId, endpoint, label, preview = false) {
   }
 
   function downloadTemplate(type) {
+    showLoading("Preparing template...");
+    setTimeout(() => hideLoading(), 900);
     window.location.href = `${BASE_URL}/templates/${type}`;
   }
 
@@ -161,7 +163,7 @@ async function handleUpload(inputId, endpoint, label, preview = false) {
   function toggleButtons(disable) {
     document.querySelectorAll("button").forEach(btn => {
       btn.disabled = disable;
-      btn.style.opacity = disable ? 0.6 : 1;
+      btn.classList.toggle("is-loading", disable);
     });
   }
 
