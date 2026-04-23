@@ -732,13 +732,13 @@ input[type="file"] {
 }
 
 .thermal-bill {
-  width: min(100%, 320px);
-  padding: 18px 16px 20px;
+  width: min(100%, 300px);
+  padding: 12px 10px 14px;
   background: #fff;
-  color: #121826;
-  border: 1px solid #d9dee6;
-  border-radius: 12px;
-  box-shadow: 0 18px 36px rgb(15 23 42 / 0.08);
+  color: #111;
+  border: 1px solid #dfe4ea;
+  border-radius: 8px;
+  box-shadow: 0 12px 24px rgb(15 23 42 / 0.06);
   font-family: "Courier New", monospace;
 }
 
@@ -747,83 +747,88 @@ input[type="file"] {
 }
 
 .thermal-label {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.12em;
+  text-align: center;
 }
 
 .thermal-center h3 {
-  margin: 6px 0 4px;
-  font-size: 27px;
-  line-height: 1;
+  margin: 3px 0 4px;
+  font-size: 20px;
+  line-height: 1.05;
 }
 
 .thermal-center p,
 .thermal-customer p,
 .thermal-notes {
-  margin: 3px 0;
-  font-size: 12px;
-  line-height: 1.35;
+  margin: 2px 0;
+  font-size: 11px;
+  line-height: 1.25;
 }
 
-.thermal-meta,
+.thermal-meta-grid,
 .thermal-customer,
 .thermal-summary {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px dashed #8c98a8;
+  margin-top: 8px;
 }
 
-.thermal-meta div,
+.thermal-meta-row,
 .thermal-summary p {
   display: flex;
   justify-content: space-between;
-  gap: 10px;
-  margin: 4px 0;
-  font-size: 12px;
+  gap: 8px;
+  margin: 2px 0;
+  font-size: 11px;
 }
 
-.thermal-items-table {
-  width: 100% !important;
-  min-width: 0 !important;
-  max-width: 100%;
-  margin-top: 12px;
-  table-layout: fixed;
-  border-collapse: collapse;
+.thermal-rule {
+  margin: 8px 0 4px;
+  font-size: 10px;
+  line-height: 1;
+  color: #5f6b7a;
+  text-align: center;
 }
 
 .thermal-items-table th,
 .thermal-items-table td {
-  padding: 5px 0;
-  border-bottom: 1px dashed #d8dee8;
-  font-size: 12px;
+  padding: 2px 0;
+  border-bottom: none;
+  font-size: 10px;
   white-space: normal;
   overflow-wrap: anywhere;
 }
 
 .thermal-items-table th:nth-child(1),
 .thermal-items-table td:nth-child(1) {
-  width: 9%;
+  width: 8%;
+  text-align: left;
 }
 
 .thermal-items-table th:nth-child(2),
 .thermal-items-table td:nth-child(2) {
-  width: 39%;
+  width: 33%;
+  text-align: left;
 }
 
 .thermal-items-table th:nth-child(3),
 .thermal-items-table td:nth-child(3) {
-  width: 16%;
+  width: 18%;
 }
 
 .thermal-items-table th:nth-child(4),
 .thermal-items-table td:nth-child(4) {
-  width: 16%;
+  width: 13%;
 }
 
 .thermal-items-table th:nth-child(5),
 .thermal-items-table td:nth-child(5) {
-  width: 20%;
+  width: 12%;
+}
+
+.thermal-items-table th:nth-child(6),
+.thermal-items-table td:nth-child(6) {
+  width: 16%;
 }
 
 .thermal-items-table th:nth-child(3),
@@ -831,61 +836,41 @@ input[type="file"] {
 .thermal-items-table th:nth-child(4),
 .thermal-items-table td:nth-child(4),
 .thermal-items-table th:nth-child(5),
-.thermal-items-table td:nth-child(5) {
+.thermal-items-table td:nth-child(5),
+.thermal-items-table th:nth-child(6),
+.thermal-items-table td:nth-child(6) {
   text-align: right;
 }
 
-.thermal-items-list {
-  margin-top: 12px;
-  border-top: 1px dashed #d8dee8;
-  padding-top: 8px;
-}
-
-.thermal-item {
-  padding: 7px 0;
-  border-bottom: 1px dashed #d8dee8;
-}
-
-.thermal-item-top,
-.thermal-item-meta {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.thermal-item-top {
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.thermal-item-meta {
-  margin-top: 3px;
-  font-size: 11px;
-  color: #536071;
-  flex-wrap: wrap;
+.thermal-subrow td {
+  color: #5f6b7a;
+  font-size: 9px;
+  padding-top: 0;
+  padding-bottom: 2px;
 }
 
 .thermal-total {
-  margin-top: 6px;
-  padding-top: 6px;
+  margin-top: 4px;
+  padding-top: 4px;
   border-top: 1px dashed #8c98a8;
   font-weight: 800;
 }
 
 .thermal-notes {
-  padding-top: 10px;
+  padding-top: 6px;
+  font-size: 10px;
 }
 
 .thermal-footer {
-  margin-top: 14px;
-  padding-top: 10px;
+  margin-top: 10px;
+  padding-top: 8px;
   border-top: 1px dashed #8c98a8;
   text-align: center;
 }
 
 .thermal-footer p {
-  margin: 2px 0;
-  font-size: 12px;
+  margin: 1px 0;
+  font-size: 11px;
 }
 
 @media (max-width: 1180px) {

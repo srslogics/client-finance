@@ -397,69 +397,7 @@ function renderRetailPreview(bill, isDraft = false) {
     return;
   }
 
-  const itemsHtml = (bill.items || []).map((item, index) => {
-    const lineType = (item.line_type || "STANDARD").toUpperCase();
-    return `
-      <div class="thermal-item">
-        <div class="thermal-item-top">
-          <span>${index + 1}. ${escapeHtml(item.item_name)}</span>
-          <strong>${formatBillMoney(item.amount)}</strong>
-        </div>
-        <div class="thermal-item-meta">
-          <span>NAG ${formatBillNag(item.nag || item.quantity || 0)}</span>
-          <span>KGS ${Number(item.weight || 0).toFixed(3)}</span>
-          <span>${lineType === "DRESSED" ? "Avg" : "Rate"} ${formatBillRate(item.rate)}/kg</span>
-        </div>
-      </div>
-    `;
-  }).join("");
-
-  preview.innerHTML = `
-    <div class="thermal-bill">
-      <div class="thermal-center">
-        <div class="thermal-label">INVOICE</div>
-        <h3>${escapeHtml(RETAIL_SHOP_PROFILE.name)}</h3>
-        <p>${escapeHtml(RETAIL_SHOP_PROFILE.proprietor)}</p>
-        <p>${escapeHtml(RETAIL_SHOP_PROFILE.address)}</p>
-        <p>${escapeHtml(RETAIL_SHOP_PROFILE.phone)}</p>
-      </div>
-
-      <div class="thermal-meta">
-        <div><span>Bill no</span><strong>${escapeHtml(bill.bill_number)}</strong></div>
-        <div><span>Date</span><strong>${formatDisplayDate(bill.date)}</strong></div>
-        <div><span>Time</span><strong>${escapeHtml(bill.time || new Date().toLocaleTimeString("en-GB"))}</strong></div>
-        <div><span>Cashier</span><strong>${escapeHtml(bill.cashier_name || "admin")}</strong></div>
-      </div>
-
-      ${(bill.customer_name || bill.customer_phone || bill.customer_address) ? `
-        <div class="thermal-customer">
-          ${bill.customer_name ? `<p><strong>Customer:</strong> ${escapeHtml(bill.customer_name)}</p>` : ""}
-          ${bill.customer_phone ? `<p><strong>Phone:</strong> ${escapeHtml(bill.customer_phone)}</p>` : ""}
-          ${bill.customer_address ? `<p><strong>Address:</strong> ${escapeHtml(bill.customer_address)}</p>` : ""}
-        </div>
-      ` : ""}
-
-      <div class="thermal-items-list">${itemsHtml}</div>
-
-      <div class="thermal-summary">
-        <p><span>Total Item(s)</span><strong>${bill.items.length}</strong></p>
-        <p><span>Total NAG</span><strong>${formatBillNag(bill.total_nag || bill.total_quantity || 0)}</strong></p>
-        <p><span>Total Weight</span><strong>${Number(bill.total_weight || 0).toFixed(3)} kg</strong></p>
-        <p class="thermal-total"><span>TOTAL</span><strong>${formatBillMoney(bill.total_amount)}</strong></p>
-        <p><span>${escapeHtml(bill.payment_mode || "Cash")} Payment</span><strong>${formatBillMoney(bill.paid_amount)}</strong></p>
-        <p><span>Outstanding Balance</span><strong>${formatBillMoney(bill.outstanding_amount)}</strong></p>
-      </div>
-
-      ${bill.requires_customer && !bill.customer_name ? `<div class="thermal-notes">Known customer name is required when this bill has credit outstanding.</div>` : ""}
-
-      ${bill.notes ? `<div class="thermal-notes">${escapeHtml(bill.notes)}</div>` : ""}
-
-      <div class="thermal-footer">
-        <p>Thank You</p>
-        <p>Visit Again</p>
-      </div>
-    </div>
-  `;
+  preview.innerHTML = getRetailReceiptMarkup(bill);
 }
 
 async function saveRetailBill() {
@@ -624,25 +562,40 @@ async function printCurrentRetailBill() {
       <head>
         <title>Retail Bill ${escapeHtml(bill.bill_number)}</title>
         <style>
-          body { margin: 0; font-family: Arial, sans-serif; background: white; }
-          .bill { width: 80mm; margin: 0 auto; padding: 8px 10px 14px; color: #111; }
+          @page { size: 80mm auto; margin: 0; }
+          body { margin: 0; font-family: "Courier New", monospace; background: white; color: #111; }
+          .bill { width: 76mm; margin: 0 auto; padding: 4mm 2.5mm 5mm; }
+          .thermal-bill { width: 100%; color: #111; }
+          .thermal-label, .thermal-header-mini, .thermal-rule, .thermal-note-mini { text-align: center; }
+          .thermal-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
           .thermal-center { text-align: center; }
-          .thermal-label { font-size: 11px; letter-spacing: 1.5px; margin-bottom: 4px; text-transform: uppercase; }
-          h3 { margin: 0; font-size: 24px; }
-          p { margin: 2px 0; font-size: 12px; }
-          .thermal-meta, .thermal-summary, .thermal-customer, .thermal-footer, .thermal-notes { margin-top: 10px; border-top: 1px dashed #555; padding-top: 8px; }
-          .thermal-meta div, .thermal-summary p { display: flex; justify-content: space-between; gap: 10px; }
-          .thermal-items-list { margin-top: 10px; border-top: 1px dashed #555; padding-top: 8px; }
-          .thermal-item { padding: 6px 0; border-bottom: 1px dashed #ddd; }
-          .thermal-item-top, .thermal-item-meta { display: flex; justify-content: space-between; gap: 8px; }
-          .thermal-item-top { font-size: 12px; font-weight: 700; }
-          .thermal-item-meta { margin-top: 2px; font-size: 11px; color: #333; flex-wrap: wrap; }
-          .thermal-total { border-top: 1px dashed #555; margin-top: 6px; padding-top: 6px; font-weight: 700; }
-          .thermal-footer { text-align: center; margin-top: 14px; }
+          .thermal-center h3 { margin: 2px 0 3px; font-size: 18px; line-height: 1.1; }
+          .thermal-center p { margin: 1px 0; font-size: 11px; line-height: 1.25; }
+          .thermal-header-mini { margin-top: 2px; font-size: 10px; }
+          .thermal-meta-grid { margin-top: 7px; font-size: 11px; }
+          .thermal-meta-row { display: flex; justify-content: space-between; gap: 8px; margin: 1px 0; }
+          .thermal-customer { margin-top: 6px; font-size: 11px; }
+          .thermal-customer p { margin: 1px 0; }
+          .thermal-rule { margin: 6px 0 4px; font-size: 10px; letter-spacing: 0; }
+          .thermal-items-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 10px; }
+          .thermal-items-table th, .thermal-items-table td { padding: 2px 0; vertical-align: top; }
+          .thermal-items-table th { font-weight: 700; }
+          .thermal-items-table th:nth-child(1), .thermal-items-table td:nth-child(1) { width: 8%; text-align: left; }
+          .thermal-items-table th:nth-child(2), .thermal-items-table td:nth-child(2) { width: 33%; text-align: left; overflow-wrap: anywhere; }
+          .thermal-items-table th:nth-child(3), .thermal-items-table td:nth-child(3) { width: 18%; text-align: right; }
+          .thermal-items-table th:nth-child(4), .thermal-items-table td:nth-child(4) { width: 13%; text-align: right; }
+          .thermal-items-table th:nth-child(5), .thermal-items-table td:nth-child(5) { width: 12%; text-align: right; }
+          .thermal-items-table th:nth-child(6), .thermal-items-table td:nth-child(6) { width: 16%; text-align: right; }
+          .thermal-summary { margin-top: 6px; font-size: 11px; }
+          .thermal-summary p, .thermal-summary-row { display: flex; justify-content: space-between; gap: 10px; margin: 2px 0; }
+          .thermal-total { margin-top: 4px; padding-top: 4px; border-top: 1px dashed #666; font-weight: 700; }
+          .thermal-notes, .thermal-note-mini { margin-top: 6px; font-size: 10px; line-height: 1.25; }
+          .thermal-footer { margin-top: 10px; text-align: center; font-size: 11px; }
+          .thermal-footer p { margin: 1px 0; }
         </style>
       </head>
       <body>
-        <div class="bill">${document.getElementById("retailPreview")?.innerHTML || ""}</div>
+        <div class="bill">${getRetailReceiptMarkup(bill)}</div>
         <script>
           window.onload = function () {
             window.print();
@@ -760,6 +713,91 @@ function formatBillRate(value) {
 
 function formatBillMoney(value) {
   return Number(value || 0).toFixed(2);
+}
+
+function getRetailReceiptMarkup(bill) {
+  const itemsHtml = (bill.items || []).map((item, index) => {
+    const lineType = (item.line_type || "STANDARD").toUpperCase();
+    const quantityText = `${formatBillNag(item.nag || item.quantity || 0)}${lineType === "DRESSED" ? " NAG" : ""}`;
+    const kgsText = Number(item.weight || 0).toFixed(3);
+    const mrpText = lineType === "DRESSED" ? "0.00" : formatBillRate(item.rate);
+    return `
+      <tr>
+        <td>${index + 1}</td>
+        <td>${escapeHtml(item.item_name)}</td>
+        <td>${escapeHtml(quantityText)}</td>
+        <td>${mrpText}</td>
+        <td>${formatBillRate(item.rate)}</td>
+        <td>${formatBillMoney(item.amount)}</td>
+      </tr>
+      <tr class="thermal-subrow">
+        <td></td>
+        <td colspan="2">KGS ${kgsText}</td>
+        <td colspan="3">${lineType === "DRESSED" ? "Dressed Chicken" : item.unit || "KGS"}</td>
+      </tr>
+    `;
+  }).join("");
+
+  const customerBlock = (bill.customer_name || bill.customer_phone || bill.customer_address) ? `
+    <div class="thermal-customer">
+      ${bill.customer_name ? `<p><strong>Customer Name</strong> : ${escapeHtml(bill.customer_name)}</p>` : ""}
+      ${bill.customer_phone ? `<p><strong>Phone</strong> : ${escapeHtml(bill.customer_phone)}</p>` : ""}
+      ${bill.customer_address ? `<p><strong>Customer Add</strong> : ${escapeHtml(bill.customer_address)}</p>` : ""}
+    </div>
+  ` : "";
+
+  return `
+    <div class="thermal-bill">
+      <div class="thermal-label">INVOICE</div>
+      <div class="thermal-center">
+        <h3>${escapeHtml(RETAIL_SHOP_PROFILE.name)}</h3>
+        <p>${escapeHtml(RETAIL_SHOP_PROFILE.proprietor)}</p>
+        <p>${escapeHtml(RETAIL_SHOP_PROFILE.address)}</p>
+        <p>Mob. ${escapeHtml(RETAIL_SHOP_PROFILE.phone)}</p>
+      </div>
+
+      <div class="thermal-meta-grid">
+        <div class="thermal-meta-row"><span>Bill no</span><span>${escapeHtml(bill.bill_number)}</span></div>
+        <div class="thermal-meta-row"><span>Date</span><span>${formatDisplayDate(bill.date)}</span></div>
+        <div class="thermal-meta-row"><span>Time</span><span>${escapeHtml(bill.time || new Date().toLocaleTimeString("en-GB"))}</span></div>
+        <div class="thermal-meta-row"><span>Cashier</span><span>${escapeHtml(bill.cashier_name || "admin")}</span></div>
+      </div>
+
+      ${customerBlock}
+
+      <div class="thermal-rule">----------------------------------------------</div>
+      <table class="thermal-items-table">
+        <thead>
+          <tr>
+            <th>Sl</th>
+            <th>Item Name</th>
+            <th>Qty</th>
+            <th>MRP</th>
+            <th>Rate</th>
+            <th>Amount</th>
+          </tr>
+        </thead>
+        <tbody>${itemsHtml}</tbody>
+      </table>
+      <div class="thermal-rule">----------------------------------------------</div>
+
+      <div class="thermal-summary">
+        <p><span>Total Item(s): ${bill.items.length}</span><span>/Qty : ${formatBillNag(bill.total_nag || bill.total_quantity || 0)}</span></p>
+        <p><span>Total Kgs</span><strong>${Number(bill.total_weight || 0).toFixed(3)}</strong></p>
+        <p class="thermal-total"><span>TOTAL</span><strong>${formatBillMoney(bill.total_amount)}</strong></p>
+        <p><span>${escapeHtml(bill.payment_mode || "Cash")} Payment</span><strong>${formatBillMoney(bill.paid_amount)}</strong></p>
+        <p><span>Outstanding balance</span><strong>${formatBillMoney(bill.outstanding_amount)}</strong></p>
+      </div>
+
+      ${bill.requires_customer && !bill.customer_name ? `<div class="thermal-notes">Known customer name is required when this bill has credit outstanding.</div>` : ""}
+      ${bill.notes ? `<div class="thermal-notes">${escapeHtml(bill.notes)}</div>` : ""}
+
+      <div class="thermal-footer">
+        <p>Thank You</p>
+        <p>Visit Again</p>
+      </div>
+    </div>
+  `;
 }
 
 function handleRetailLineTypeChange(input) {

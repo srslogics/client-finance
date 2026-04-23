@@ -946,7 +946,7 @@ def upload_dealer(file: UploadFile = File(...), preview: bool = False, input_dat
 
 
 @app.post("/upload/payment")
-def upload_payment(file: UploadFile = File(...), preview: bool = False, db: Session = Depends(get_db)):
+def upload_payment(file: UploadFile = File(...), preview: bool = False, input_date: str = None, db: Session = Depends(get_db)):
 
     import io
     import hashlib
@@ -976,7 +976,8 @@ def upload_payment(file: UploadFile = File(...), preview: bool = False, db: Sess
 
     df.columns = df.columns.str.strip().str.upper()
 
-    required_cols = ["DATE", "PARTY", "AMOUNT", "PAYMENT_MODE", "DIRECTION"]
+    date_col = "DATE" if "DATE" in df.columns else None
+    required_cols = ["PARTY", "AMOUNT", "PAYMENT_MODE", "DIRECTION"]
     for col in required_cols:
         if col not in df.columns:
             return {"error": f"Missing column: {col}"}
@@ -985,6 +986,10 @@ def upload_payment(file: UploadFile = File(...), preview: bool = False, db: Sess
         df["AMOUNT"] = df["AMOUNT"].astype(float)
     except Exception:
         return {"error": "Invalid amount values"}
+
+    fallback_date = parse_input_date(input_date) if input_date else None
+    if not date_col and not fallback_date:
+        return {"error": "Provide DATE column in file or select the upload date in the app"}
 
     inserted = 0
     skipped = 0
@@ -1002,7 +1007,11 @@ def upload_payment(file: UploadFile = File(...), preview: bool = False, db: Sess
 
             party_name = str(row["PARTY"]).strip()
             amount = Decimal(str(float(row["AMOUNT"])))
-            target_date = pd.to_datetime(row["DATE"], dayfirst=True).date()
+            target_date = resolve_upload_date(row, date_col, fallback_date)
+            if not target_date:
+                skipped += 1
+                row_error(errors, row_number, "Invalid or missing date")
+                continue
             payment_mode = str(row["PAYMENT_MODE"]).strip() if not pd.isna(row["PAYMENT_MODE"]) else "NA"
             direction = normalize_payment_direction(row["DIRECTION"])
 
