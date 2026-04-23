@@ -27,6 +27,7 @@ def ensure_database_schema():
         conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS item_type VARCHAR"))
         conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS source_ref VARCHAR NOT NULL DEFAULT ''"))
         conn.execute(text("UPDATE transactions SET source_ref = '' WHERE source_ref IS NULL"))
+        conn.execute(text("ALTER TABLE retail_bill_items ADD COLUMN IF NOT EXISTS line_type VARCHAR NOT NULL DEFAULT 'STANDARD'"))
         conn.execute(text("ALTER TABLE transactions DROP CONSTRAINT IF EXISTS unique_txn"))
         conn.execute(text("""
             DO $$
@@ -101,6 +102,7 @@ def ensure_database_schema():
                 bill_id UUID NOT NULL REFERENCES retail_bills(id),
                 line_order INTEGER NOT NULL DEFAULT 1,
                 item_name VARCHAR NOT NULL,
+                line_type VARCHAR NOT NULL DEFAULT 'STANDARD',
                 quantity NUMERIC,
                 unit VARCHAR,
                 weight NUMERIC,
@@ -467,6 +469,28 @@ def format_retail_credit_row(customer_name, bill_number, total_amount=0, paid_am
     }
 
 
+def decimal_ratio(amount, weight):
+    amount_value = Decimal(amount or 0)
+    weight_value = Decimal(weight or 0)
+    if weight_value <= 0:
+        return Decimal("0")
+    return amount_value / weight_value
+
+
+def format_rate_analysis_row(label, avg_rate=0, weight=0, amount=0, category=None, goods=None):
+    row = {
+        "label": label,
+        "avg_rate": float(avg_rate or 0),
+        "weight": float(weight or 0),
+        "amount": float(amount or 0)
+    }
+    if category is not None:
+        row["category"] = category
+    if goods is not None:
+        row["goods"] = goods
+    return row
+
+
 def parse_decimal(value, default="0"):
     if value in [None, ""]:
         return Decimal(default)
@@ -501,6 +525,7 @@ def serialize_retail_bill(bill, items):
             {
                 "line_order": item.line_order,
                 "item_name": item.item_name,
+                "line_type": (item.line_type or "STANDARD").upper(),
                 "nag": float(item.quantity or 0),
                 "quantity": float(item.quantity or 0),
                 "unit": item.unit or "KGS",
@@ -2374,6 +2399,9 @@ def create_retail_bill(payload: dict = Body(...), db: Session = Depends(get_db))
         if not item_name:
             return {"error": f"Item name missing on row {index}"}
 
+        line_type = str(raw_item.get("line_type") or "STANDARD").strip().upper()
+        if line_type not in ["STANDARD", "DRESSED"]:
+            line_type = "STANDARD"
         quantity = parse_decimal(raw_item.get("nag", raw_item.get("quantity")))
         rate = parse_decimal(raw_item.get("rate"))
         unit = str(raw_item.get("unit") or "KGS").strip().upper()
@@ -2386,13 +2414,23 @@ def create_retail_bill(payload: dict = Body(...), db: Session = Depends(get_db))
             weight = quantity
 
         amount = parse_decimal(raw_item.get("amount"))
-        if amount <= 0:
+        if line_type == "DRESSED":
+            unit = "KGS"
+            if weight <= 0:
+                return {"error": f"Kgs must be greater than 0 for dressed chicken on row {index}"}
+            if amount <= 0 and rate > 0:
+                amount = weight * rate
+            if amount <= 0:
+                return {"error": f"Amount must be greater than 0 for dressed chicken on row {index}"}
+            rate = decimal_ratio(amount, weight)
+        elif amount <= 0:
             amount_base = weight if weight > 0 else quantity
             amount = amount_base * rate
 
         normalized_items.append({
             "line_order": index,
             "item_name": item_name,
+            "line_type": line_type,
             "quantity": quantity,
             "unit": unit,
             "weight": weight,
@@ -2445,17 +2483,19 @@ def create_retail_bill(payload: dict = Body(...), db: Session = Depends(get_db))
             bill_id=bill.id,
             line_order=item["line_order"],
             item_name=item["item_name"],
+            line_type=item["line_type"],
             quantity=item["quantity"],
             unit=item["unit"],
             weight=item["weight"],
             rate=item["rate"],
             amount=item["amount"]
         ))
+        transaction_category = "RETAIL DRESSED" if item["line_type"] == "DRESSED" else "RETAIL"
         db.add(models.Transaction(
             date=target_date,
             party_id=party_id,
             type="SALE",
-            category="RETAIL",
+            category=transaction_category,
             item_type=item["item_name"],
             weight=item["weight"],
             rate=item["rate"],
@@ -2673,7 +2713,7 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
         amount = Decimal(txn.amount or 0)
         sales_sections[section].append(format_sheet_row(txn.item_type or "Unknown", weight, rate, amount))
 
-    section_order = ["WHOLESALE", "HOTEL", "RETAIL", "RETAILS", "SHOP", "CUSTOMER", "OTHER"]
+    section_order = ["WHOLESALE", "HOTEL", "RETAIL", "RETAIL DRESSED", "RETAILS", "SHOP", "CUSTOMER", "OTHER"]
     ordered_sales_sections = []
     for section in section_order + [s for s in sales_sections.keys() if s not in section_order]:
         rows = sales_sections.get(section)
@@ -2733,6 +2773,83 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
         retail_credit_paid += bill_paid
         retail_credit_outstanding += bill_outstanding
 
+    purchase_rate_rows = []
+    purchase_rate_query = db.query(
+        models.Transaction.item_type.label("item_type"),
+        func.sum(models.Transaction.weight).label("weight"),
+        func.sum(models.Transaction.amount).label("amount")
+    ).filter(
+        models.Transaction.date == target_date,
+        models.Transaction.type == "PURCHASE",
+        models.Transaction.item_type.isnot(None)
+    ).group_by(
+        models.Transaction.item_type
+    ).order_by(
+        models.Transaction.item_type.asc()
+    ).all()
+    for row in purchase_rate_query:
+        weight = Decimal(row.weight or 0)
+        amount = Decimal(row.amount or 0)
+        purchase_rate_rows.append(
+            format_rate_analysis_row(row.item_type, decimal_ratio(amount, weight), weight, amount)
+        )
+
+    category_rate_rows = []
+    category_rate_query = db.query(
+        models.Transaction.category.label("category"),
+        func.sum(models.Transaction.weight).label("weight"),
+        func.sum(models.Transaction.amount).label("amount")
+    ).filter(
+        models.Transaction.date == target_date,
+        models.Transaction.type == "SALE"
+    ).group_by(
+        models.Transaction.category
+    ).order_by(
+        models.Transaction.category.asc().nulls_last()
+    ).all()
+    for row in category_rate_query:
+        weight = Decimal(row.weight or 0)
+        amount = Decimal(row.amount or 0)
+        category_rate_rows.append(
+            format_rate_analysis_row(row.category or "OTHER", decimal_ratio(amount, weight), weight, amount, category=row.category or "OTHER")
+        )
+
+    category_item_rate_rows = []
+    category_item_rate_query = db.query(
+        models.Transaction.category.label("category"),
+        models.Transaction.item_type.label("item_type"),
+        func.sum(models.Transaction.weight).label("weight"),
+        func.sum(models.Transaction.amount).label("amount")
+    ).filter(
+        models.Transaction.date == target_date,
+        models.Transaction.type == "SALE",
+        models.Transaction.item_type.isnot(None)
+    ).group_by(
+        models.Transaction.category,
+        models.Transaction.item_type
+    ).order_by(
+        models.Transaction.category.asc().nulls_last(),
+        models.Transaction.item_type.asc()
+    ).all()
+    for row in category_item_rate_query:
+        weight = Decimal(row.weight or 0)
+        amount = Decimal(row.amount or 0)
+        category_item_rate_rows.append(
+            format_rate_analysis_row(
+                f"{row.category or 'OTHER'} - {row.item_type}",
+                decimal_ratio(amount, weight),
+                weight,
+                amount,
+                category=row.category or "OTHER",
+                goods=row.item_type
+            )
+        )
+
+    total_purchase_rate_value = decimal_ratio(purchase_total_amount, purchase_total_weight)
+    total_sales_rate_value = decimal_ratio(total_sales_amount, total_sales_weight)
+    dressed_sales_weight = sum(Decimal(str(row["total"]["weight"])) for row in ordered_sales_sections if row["title"].upper() == "RETAIL DRESSED")
+    dressed_sales_amount = sum(Decimal(str(row["total"]["total"])) for row in ordered_sales_sections if row["title"].upper() == "RETAIL DRESSED")
+
     return {
         "date": str(target_date),
         "opening_stock": {
@@ -2766,6 +2883,37 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
         },
         "meta": {
             "nag_available": False
+        },
+        "rate_analysis": {
+            "purchase_by_hen_type": purchase_rate_rows,
+            "sales_by_category": category_rate_rows,
+            "sales_by_hen_type_category": category_item_rate_rows
+        },
+        "metric_cards": [
+            {
+                "label": "Avg Buy Rate",
+                "value": float(total_purchase_rate_value),
+                "suffix": "/kg"
+            },
+            {
+                "label": "Avg Sale Rate",
+                "value": float(total_sales_rate_value),
+                "suffix": "/kg"
+            },
+            {
+                "label": "Retail Credit",
+                "value": float(retail_credit_outstanding),
+                "prefix": "Rs "
+            },
+            {
+                "label": "Dressed Sale",
+                "value": float(dressed_sales_amount),
+                "prefix": "Rs ",
+                "subvalue": f"{float(dressed_sales_weight):.3f} kg"
+            }
+        ],
+        "special_sections": {
+            "dressed_retail": next((section for section in ordered_sales_sections if section["title"].upper() == "RETAIL DRESSED"), None)
         }
     }
 

@@ -117,6 +117,10 @@ function addRetailItemRow(item = null) {
   row.className = "retail-item-row";
   row.innerHTML = `
     <input type="text" class="retailItemName" placeholder="Item name" list="retailItemSuggestions" autocomplete="off" oninput="suggestRetailItems(this); recalcRetailLine(this)">
+    <select class="retailLineType" onchange="handleRetailLineTypeChange(this)">
+      <option value="STANDARD">Regular</option>
+      <option value="DRESSED">Dressed Chicken</option>
+    </select>
     <input type="number" class="retailQty" placeholder="NAG" min="0" step="0.01" oninput="recalcRetailLine(this)">
     <select class="retailUnit" onchange="recalcRetailLine(this)">
       <option value="KGS">KGS</option>
@@ -131,6 +135,7 @@ function addRetailItemRow(item = null) {
 
   if (item) {
     row.querySelector(".retailItemName").value = item.item_name || "";
+    row.querySelector(".retailLineType").value = (item.line_type || "STANDARD").toUpperCase();
     row.querySelector(".retailQty").value = item.nag || item.quantity || "";
     row.querySelector(".retailUnit").value = item.unit || "KGS";
     row.querySelector(".retailWeight").value = item.weight || "";
@@ -138,6 +143,7 @@ function addRetailItemRow(item = null) {
     row.querySelector(".retailAmount").value = item.amount || "";
   }
 
+  syncRetailLineUi(row);
   retailDraftDirty = true;
   retailBillCompleted = false;
   renderRetailPreviewFromForm();
@@ -174,8 +180,11 @@ function removeRetailItemRow(button) {
     row?.querySelectorAll("input").forEach(input => {
       input.value = "";
     });
+    const lineTypeSelect = row?.querySelector(".retailLineType");
     const unitSelect = row?.querySelector(".retailUnit");
+    if (lineTypeSelect) lineTypeSelect.value = "STANDARD";
     if (unitSelect) unitSelect.value = "KGS";
+    syncRetailLineUi(row);
     retailDraftDirty = true;
     retailBillCompleted = false;
     renderRetailPreviewFromForm();
@@ -192,25 +201,44 @@ function recalcRetailLine(source) {
   const row = source?.closest(".retail-item-row");
   if (!row) return;
 
+  const lineTypeInput = row.querySelector(".retailLineType");
   const qtyInput = row.querySelector(".retailQty");
   const unitInput = row.querySelector(".retailUnit");
   const weightInput = row.querySelector(".retailWeight");
   const rateInput = row.querySelector(".retailRate");
   const amountInput = row.querySelector(".retailAmount");
 
+  const lineType = lineTypeInput?.value || "STANDARD";
   const quantity = Number(qtyInput?.value || 0);
   const unit = unitInput?.value || "KGS";
   let weight = Number(weightInput?.value || 0);
-  const rate = Number(rateInput?.value || 0);
+  let rate = Number(rateInput?.value || 0);
+  let amount = Number(amountInput?.value || 0);
 
-  if (unit === "KGS" && quantity > 0 && weight <= 0) {
-    weight = quantity;
-    weightInput.value = quantity;
-  }
+  if (lineType === "DRESSED") {
+    if (unitInput) unitInput.value = "KGS";
 
-  const base = weight > 0 ? weight : quantity;
-  if (rate > 0 && base > 0) {
-    amountInput.value = (base * rate).toFixed(2);
+    if (weight > 0 && amount > 0) {
+      rate = amount / weight;
+      rateInput.value = rate.toFixed(2);
+    } else if (weight > 0 && rate > 0 && source !== amountInput) {
+      amount = weight * rate;
+      amountInput.value = amount.toFixed(2);
+    } else if (weight <= 0 || amount <= 0) {
+      rateInput.value = "";
+    }
+  } else {
+    if (unit === "KGS" && quantity > 0 && weight <= 0) {
+      weight = quantity;
+      weightInput.value = quantity;
+    }
+
+    const base = weight > 0 ? weight : quantity;
+    if (rate > 0 && base > 0 && source !== amountInput) {
+      amountInput.value = (base * rate).toFixed(2);
+    } else if (amount > 0 && base > 0 && source === amountInput) {
+      rateInput.value = (amount / base).toFixed(2);
+    }
   }
 
   retailDraftDirty = true;
@@ -222,6 +250,7 @@ function collectRetailItemsFromForm() {
   return Array.from(document.querySelectorAll(".retail-item-row"))
     .map(row => ({
       item_name: row.querySelector(".retailItemName")?.value.trim(),
+      line_type: row.querySelector(".retailLineType")?.value || "STANDARD",
       nag: Number(row.querySelector(".retailQty")?.value || 0),
       quantity: Number(row.querySelector(".retailQty")?.value || 0),
       unit: row.querySelector(".retailUnit")?.value || "KGS",
@@ -368,15 +397,22 @@ function renderRetailPreview(bill, isDraft = false) {
     return;
   }
 
-  const itemsHtml = (bill.items || []).map((item, index) => `
-    <tr>
-      <td>${index + 1}</td>
-      <td>${escapeHtml(item.item_name)}</td>
-      <td>${formatBillQuantity(item.nag || item.quantity, item.unit)}</td>
-      <td>${formatBillRate(item.rate)}</td>
-      <td>${formatBillMoney(item.amount)}</td>
-    </tr>
-  `).join("");
+  const itemsHtml = (bill.items || []).map((item, index) => {
+    const lineType = (item.line_type || "STANDARD").toUpperCase();
+    return `
+      <div class="thermal-item">
+        <div class="thermal-item-top">
+          <span>${index + 1}. ${escapeHtml(item.item_name)}</span>
+          <strong>${formatBillMoney(item.amount)}</strong>
+        </div>
+        <div class="thermal-item-meta">
+          <span>NAG ${formatBillNag(item.nag || item.quantity || 0)}</span>
+          <span>KGS ${Number(item.weight || 0).toFixed(3)}</span>
+          <span>${lineType === "DRESSED" ? "Avg" : "Rate"} ${formatBillRate(item.rate)}/kg</span>
+        </div>
+      </div>
+    `;
+  }).join("");
 
   preview.innerHTML = `
     <div class="thermal-bill">
@@ -403,18 +439,7 @@ function renderRetailPreview(bill, isDraft = false) {
         </div>
       ` : ""}
 
-      <table class="thermal-items-table">
-        <thead>
-          <tr>
-            <th>Sl</th>
-            <th>Item Name</th>
-            <th>NAG</th>
-            <th>Rate</th>
-            <th>Amount</th>
-          </tr>
-        </thead>
-        <tbody>${itemsHtml}</tbody>
-      </table>
+      <div class="thermal-items-list">${itemsHtml}</div>
 
       <div class="thermal-summary">
         <p><span>Total Item(s)</span><strong>${bill.items.length}</strong></p>
@@ -607,14 +632,11 @@ async function printCurrentRetailBill() {
           p { margin: 2px 0; font-size: 12px; }
           .thermal-meta, .thermal-summary, .thermal-customer, .thermal-footer, .thermal-notes { margin-top: 10px; border-top: 1px dashed #555; padding-top: 8px; }
           .thermal-meta div, .thermal-summary p { display: flex; justify-content: space-between; gap: 10px; }
-          table { width: 100%; min-width: 0; max-width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
-          th, td { padding: 4px 0; text-align: left; vertical-align: top; white-space: normal; overflow-wrap: anywhere; }
-          th:nth-child(1), td:nth-child(1) { width: 9%; }
-          th:nth-child(2), td:nth-child(2) { width: 39%; }
-          th:nth-child(3), td:nth-child(3) { width: 16%; }
-          th:nth-child(4), td:nth-child(4) { width: 16%; }
-          th:nth-child(5), td:nth-child(5) { width: 20%; }
-          th:last-child, td:last-child, th:nth-last-child(2), td:nth-last-child(2), th:nth-last-child(3), td:nth-last-child(3) { text-align: right; }
+          .thermal-items-list { margin-top: 10px; border-top: 1px dashed #555; padding-top: 8px; }
+          .thermal-item { padding: 6px 0; border-bottom: 1px dashed #ddd; }
+          .thermal-item-top, .thermal-item-meta { display: flex; justify-content: space-between; gap: 8px; }
+          .thermal-item-top { font-size: 12px; font-weight: 700; }
+          .thermal-item-meta { margin-top: 2px; font-size: 11px; color: #333; flex-wrap: wrap; }
           .thermal-total { border-top: 1px dashed #555; margin-top: 6px; padding-top: 6px; font-weight: 700; }
           .thermal-footer { text-align: center; margin-top: 14px; }
         </style>
@@ -738,6 +760,35 @@ function formatBillRate(value) {
 
 function formatBillMoney(value) {
   return Number(value || 0).toFixed(2);
+}
+
+function handleRetailLineTypeChange(input) {
+  const row = input?.closest(".retail-item-row");
+  if (!row) return;
+  syncRetailLineUi(row);
+  recalcRetailLine(input);
+}
+
+function syncRetailLineUi(row) {
+  const lineType = row?.querySelector(".retailLineType")?.value || "STANDARD";
+  const unitInput = row?.querySelector(".retailUnit");
+  const weightInput = row?.querySelector(".retailWeight");
+  const rateInput = row?.querySelector(".retailRate");
+
+  if (!unitInput || !weightInput || !rateInput) return;
+
+  if (lineType === "DRESSED") {
+    unitInput.value = "KGS";
+    unitInput.disabled = true;
+    weightInput.placeholder = "Dressed kgs";
+    rateInput.placeholder = "Auto avg rate / kg";
+    rateInput.readOnly = true;
+  } else {
+    unitInput.disabled = false;
+    weightInput.placeholder = "Weight (kg)";
+    rateInput.placeholder = "Rate";
+    rateInput.readOnly = false;
+  }
 }
 
 function getPendingRetailBills() {

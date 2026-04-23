@@ -25,7 +25,11 @@ async function loadDailySheet() {
 
     if (sheetType === "stock") {
       meta.className = "notice info";
-      meta.innerHTML = `<strong>${data.meta?.nag_available ? "NAG values are available." : "NAG and quantity are treated as the same thing in the app. Where exact NAG values are not stored yet, that column is left blank."}</strong><br>Retail bills created from the Retail Billing section are included automatically under the Retail section, and known customers taking goods on credit appear below in Retail Credit Customers.`;
+      meta.innerHTML = `<strong>${data.meta?.nag_available ? "NAG values are available." : "NAG and quantity are treated as the same thing in the app. Where exact NAG values are not stored yet, that column is left blank."}</strong><br>Retail bills created from the Retail Billing section are included automatically under the Retail and Retail Dressed sections. Known customers taking goods on credit appear below in Retail Credit Customers.`;
+
+      if (data.metric_cards?.length) {
+        content.appendChild(createMetricCardStrip(data.metric_cards));
+      }
 
       content.appendChild(createSheetSection(`Opening Stock ${formatDisplayDate(date)}`, data.opening_stock));
       content.appendChild(createSheetSection("Purchase Stock", data.purchase_stock));
@@ -33,6 +37,15 @@ async function loadDailySheet() {
       (data.sales_sections || []).forEach(section => {
         content.appendChild(createSheetSection(section.title, section));
       });
+
+      if (data.rate_analysis) {
+        const sections = [
+          createRateAnalysisSection("Avg Buy Rate by Hen Type", data.rate_analysis.purchase_by_hen_type || [], false),
+          createRateAnalysisSection("Avg Sale Rate by Category", data.rate_analysis.sales_by_category || [], false),
+          createRateAnalysisSection("Avg Sale Rate by Hen Type in Each Category", data.rate_analysis.sales_by_hen_type_category || [], true)
+        ].filter(Boolean);
+        sections.forEach(section => content.appendChild(section));
+      }
 
       if (data.retail_credit_sheet?.rows?.length) {
         content.appendChild(createRetailCreditSection("Retail Credit Customers", data.retail_credit_sheet.rows, data.retail_credit_sheet.total));
@@ -130,6 +143,26 @@ function createFinalSummarySection(summary) {
   return wrapper;
 }
 
+function createMetricCardStrip(cards) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "daily-metric-strip";
+
+  cards.forEach(card => {
+    const metric = document.createElement("div");
+    metric.className = "summary-box daily-metric-card";
+    const prefix = card.prefix || "";
+    const suffix = card.suffix || "";
+    metric.innerHTML = `
+      <span>${card.label || ""}</span>
+      <h2>${prefix}${formatNumber(card.value)}${suffix}</h2>
+      ${card.subvalue ? `<p>${card.subvalue}</p>` : ""}
+    `;
+    wrapper.appendChild(metric);
+  });
+
+  return wrapper;
+}
+
 function createBalanceSheetSection(title, rows, totals) {
   const wrapper = document.createElement("div");
   wrapper.className = "daily-sheet-section";
@@ -209,6 +242,64 @@ function createRetailCreditSection(title, rows, totals) {
   return wrapper;
 }
 
+function createRateAnalysisSection(title, rows, showCategoryAndGoods = false) {
+  if (!rows.length) return null;
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "daily-sheet-section";
+
+  const heading = document.createElement("h3");
+  heading.innerText = title;
+  wrapper.appendChild(heading);
+
+  const tableWrap = document.createElement("div");
+  tableWrap.className = "table-card daily-sheet-table";
+
+  const table = document.createElement("table");
+  table.innerHTML = showCategoryAndGoods
+    ? `
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th>Hen Type</th>
+          <th>Avg Rate</th>
+          <th>Kgs</th>
+          <th>Amount</th>
+        </tr>
+      </thead>
+    `
+    : `
+      <thead>
+        <tr>
+          <th>Label</th>
+          <th>Avg Rate</th>
+          <th>Kgs</th>
+          <th>Amount</th>
+        </tr>
+      </thead>
+    `;
+
+  const body = document.createElement("tbody");
+  rows.forEach(row => {
+    const tr = document.createElement("tr");
+    if (showCategoryAndGoods) {
+      appendDailyCell(tr, row.category || "", "analysis-text");
+      appendDailyCell(tr, row.goods || "", "analysis-text");
+    } else {
+      appendDailyCell(tr, row.label || "", "analysis-text");
+    }
+    appendDailyCell(tr, formatNumber(row.avg_rate));
+    appendDailyCell(tr, formatNumber(row.weight));
+    appendDailyCell(tr, formatMoneyCompact(row.amount));
+    body.appendChild(tr);
+  });
+
+  table.appendChild(body);
+  tableWrap.appendChild(table);
+  wrapper.appendChild(tableWrap);
+  return wrapper;
+}
+
 function createRetailCreditRow(row, isTotal = false) {
   const tr = document.createElement("tr");
   if (isTotal) tr.className = "sheet-total-row";
@@ -222,8 +313,9 @@ function createRetailCreditRow(row, isTotal = false) {
   return tr;
 }
 
-function appendDailyCell(row, value) {
+function appendDailyCell(row, value, className = "") {
   const cell = document.createElement("td");
+  if (className) cell.className = className;
   cell.innerText = value ?? "";
   row.appendChild(cell);
 }

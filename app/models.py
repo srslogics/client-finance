@@ -133,6 +133,7 @@ class RetailBillItem(Base):
     bill_id = Column(UUID(as_uuid=True), ForeignKey("retail_bills.id"), nullable=False)
     line_order = Column(Integer, nullable=False, default=1)
     item_name = Column(String, nullable=False)
+    line_type = Column(String, nullable=False, default="STANDARD")
     quantity = Column(Numeric)
     unit = Column(String)
     weight = Column(Numeric)

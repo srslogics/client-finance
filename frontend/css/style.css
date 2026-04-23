@@ -345,6 +345,23 @@ input[type="file"] {
   margin-top: 22px;
 }
 
+.daily-metric-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.daily-metric-card {
+  min-height: 132px;
+}
+
+.daily-metric-card p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .daily-sheet-section h3 {
   margin: 0 0 14px;
   color: #1f2b36;
@@ -369,6 +386,10 @@ input[type="file"] {
 
 .daily-sheet-table td:first-child,
 .daily-sheet-table th:first-child {
+  text-align: left;
+}
+
+.daily-sheet-table td.analysis-text {
   text-align: left;
 }
 
@@ -648,7 +669,7 @@ input[type="file"] {
 
 .retail-item-row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
   align-items: center;
   padding: 12px;
@@ -659,6 +680,10 @@ input[type="file"] {
 
 .retail-item-row .retailItemName {
   grid-column: span 2;
+}
+
+.retail-item-row .retailLineType {
+  grid-column: span 1;
 }
 
 .retail-item-row .retailQty,
@@ -810,6 +835,36 @@ input[type="file"] {
   text-align: right;
 }
 
+.thermal-items-list {
+  margin-top: 12px;
+  border-top: 1px dashed #d8dee8;
+  padding-top: 8px;
+}
+
+.thermal-item {
+  padding: 7px 0;
+  border-bottom: 1px dashed #d8dee8;
+}
+
+.thermal-item-top,
+.thermal-item-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.thermal-item-top {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.thermal-item-meta {
+  margin-top: 3px;
+  font-size: 11px;
+  color: #536071;
+  flex-wrap: wrap;
+}
+
 .thermal-total {
   margin-top: 6px;
   padding-top: 6px;
@@ -840,6 +895,10 @@ input[type="file"] {
 }
 
 @media (max-width: 920px) {
+  .daily-metric-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .retail-form-grid,
   .retail-notes-grid {
     grid-template-columns: 1fr 1fr;
@@ -855,6 +914,10 @@ input[type="file"] {
 }
 
 @media (max-width: 680px) {
+  .daily-metric-strip {
+    grid-template-columns: 1fr;
+  }
+
   .retail-form-grid,
   .retail-item-row,
   .retail-notes-grid {
