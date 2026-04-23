@@ -577,15 +577,15 @@ async function printCurrentRetailBill() {
           .thermal-customer { margin-top: 6px; font-size: 11px; }
           .thermal-customer p { margin: 1px 0; }
           .thermal-rule { margin: 6px 0 4px; font-size: 10px; letter-spacing: 0; }
-          .thermal-items-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 10px; }
-          .thermal-items-table th, .thermal-items-table td { padding: 2px 0; vertical-align: top; }
+          .thermal-items-table { width: 100% !important; min-width: 0 !important; max-width: 100% !important; border-collapse: collapse; table-layout: fixed; font-size: 9px; }
+          .thermal-items-table th, .thermal-items-table td { padding: 2px 0; vertical-align: top; white-space: nowrap; overflow: hidden; text-overflow: clip; }
           .thermal-items-table th { font-weight: 700; }
-          .thermal-items-table th:nth-child(1), .thermal-items-table td:nth-child(1) { width: 8%; text-align: left; }
-          .thermal-items-table th:nth-child(2), .thermal-items-table td:nth-child(2) { width: 33%; text-align: left; overflow-wrap: anywhere; }
-          .thermal-items-table th:nth-child(3), .thermal-items-table td:nth-child(3) { width: 18%; text-align: right; }
-          .thermal-items-table th:nth-child(4), .thermal-items-table td:nth-child(4) { width: 13%; text-align: right; }
-          .thermal-items-table th:nth-child(5), .thermal-items-table td:nth-child(5) { width: 12%; text-align: right; }
-          .thermal-items-table th:nth-child(6), .thermal-items-table td:nth-child(6) { width: 16%; text-align: right; }
+          .thermal-items-table th:nth-child(1), .thermal-items-table td:nth-child(1) { width: 6%; text-align: left; }
+          .thermal-items-table th:nth-child(2), .thermal-items-table td:nth-child(2) { width: 30%; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+          .thermal-items-table th:nth-child(3), .thermal-items-table td:nth-child(3) { width: 14%; text-align: right; }
+          .thermal-items-table th:nth-child(4), .thermal-items-table td:nth-child(4) { width: 12%; text-align: right; }
+          .thermal-items-table th:nth-child(5), .thermal-items-table td:nth-child(5) { width: 14%; text-align: right; }
+          .thermal-items-table th:nth-child(6), .thermal-items-table td:nth-child(6) { width: 24%; text-align: right; }
           .thermal-summary { margin-top: 6px; font-size: 11px; }
           .thermal-summary p, .thermal-summary-row { display: flex; justify-content: space-between; gap: 10px; margin: 2px 0; }
           .thermal-total { margin-top: 4px; padding-top: 4px; border-top: 1px dashed #666; font-weight: 700; }

@@ -790,45 +790,56 @@ input[type="file"] {
   text-align: center;
 }
 
+.thermal-items-table {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
 .thermal-items-table th,
 .thermal-items-table td {
   padding: 2px 0;
   border-bottom: none;
-  font-size: 10px;
-  white-space: normal;
-  overflow-wrap: anywhere;
+  font-size: 9px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
 }
 
 .thermal-items-table th:nth-child(1),
 .thermal-items-table td:nth-child(1) {
-  width: 8%;
+  width: 6%;
   text-align: left;
 }
 
 .thermal-items-table th:nth-child(2),
 .thermal-items-table td:nth-child(2) {
-  width: 33%;
+  width: 30%;
   text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .thermal-items-table th:nth-child(3),
 .thermal-items-table td:nth-child(3) {
-  width: 18%;
+  width: 14%;
 }
 
 .thermal-items-table th:nth-child(4),
 .thermal-items-table td:nth-child(4) {
-  width: 13%;
+  width: 12%;
 }
 
 .thermal-items-table th:nth-child(5),
 .thermal-items-table td:nth-child(5) {
-  width: 12%;
+  width: 14%;
 }
 
 .thermal-items-table th:nth-child(6),
 .thermal-items-table td:nth-child(6) {
-  width: 16%;
+  width: 24%;
 }
 
 .thermal-items-table th:nth-child(3),
