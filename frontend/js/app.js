@@ -344,6 +344,8 @@ function loadPage(page) {
                 <button type="button" onclick="resetRetailForm()">New Bill</button>
               </div>
 
+              <div id="retailOfflineBanner" class="notice info" style="display:none;"></div>
+
               <div class="retail-form-grid">
                 <input type="date" id="retailDate" aria-label="Retail bill date">
                 <input type="text" id="retailBillNumber" placeholder="Bill no">

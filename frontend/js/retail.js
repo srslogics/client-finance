@@ -13,12 +13,14 @@ const RETAIL_SHORTCUT_ITEMS = [
   "LEGOAN",
   "LOOS"
 ];
+const RETAIL_PENDING_STORAGE_KEY = "stockpilot.retail.pending";
 
 let retailItemSuggestTimer = null;
 let retailCustomerSuggestTimer = null;
 let currentRetailBill = null;
 let retailDraftDirty = false;
 let retailBillCompleted = false;
+let retailConnectivityListenersAttached = false;
 
 function initRetailPage() {
   const dateInput = document.getElementById("retailDate");
@@ -48,11 +50,14 @@ function initRetailPage() {
     input.addEventListener("change", markRetailDraftDirty);
   });
 
+  attachRetailConnectivityListeners();
   addRetailItemRow();
   renderRetailShortcuts();
+  renderRetailOfflineBanner();
   refreshRetailBillNumber();
   renderRetailPreviewFromForm();
   loadRetailBills();
+  syncPendingRetailBills(true);
 }
 
 function renderRetailShortcuts() {
@@ -76,17 +81,24 @@ async function refreshRetailBillNumber() {
   if (!date || !billNumber) return;
 
   try {
-    const data = await optionalApiCall(
-      `/retail-bills/next-number?date=${encodeURIComponent(date)}`,
-      { bill_number: "1" },
-      "GET",
-      null,
-      { cache: false }
-    );
-    billNumber.value = data.bill_number || "1";
+    let nextNumber = "1";
+
+    if (navigator.onLine) {
+      const data = await optionalApiCall(
+        `/retail-bills/next-number?date=${encodeURIComponent(date)}`,
+        { bill_number: "1" },
+        "GET",
+        null,
+        { cache: false }
+      );
+      nextNumber = data.bill_number || "1";
+    }
+
+    billNumber.value = computeNextRetailBillNumber(date, nextNumber);
     renderRetailPreviewFromForm();
   } catch (e) {
     console.error(e);
+    billNumber.value = computeNextRetailBillNumber(date, "1");
   }
 }
 
@@ -414,6 +426,18 @@ async function saveRetailBill() {
     return currentRetailBill;
   } catch (e) {
     console.error(e);
+    if (shouldQueueRetailOffline(e)) {
+      const offlineBill = queueRetailBillForSync(draft);
+      currentRetailBill = offlineBill;
+      retailDraftDirty = false;
+      retailBillCompleted = true;
+      renderRetailPreview(currentRetailBill);
+      renderRetailOfflineBanner();
+      await loadRetailBills();
+      showToast(`Saved offline. Bill ${offlineBill.bill_number} will sync later.`);
+      return offlineBill;
+    }
+
     showToast("Retail bill save failed");
     return null;
   }
@@ -430,31 +454,36 @@ async function loadRetailBills() {
     const params = new URLSearchParams();
     if (date) params.set("date", date);
     const query = params.toString();
-    const data = await optionalApiCall(
-      `/retail-bills${query ? `?${query}` : ""}`,
-      { results: [] },
-      "GET",
-      null,
-      { cache: false }
-    );
+    const pendingBills = getPendingRetailBills().filter(bill => !date || bill.date === date);
+    const data = navigator.onLine
+      ? await optionalApiCall(
+          `/retail-bills${query ? `?${query}` : ""}`,
+          { results: [] },
+          "GET",
+          null,
+          { cache: false }
+        )
+      : { results: [] };
 
-    if (!data.results?.length) {
+    const mergedResults = mergeRetailBillResults(data.results || [], pendingBills);
+
+    if (!mergedResults.length) {
       body.innerHTML = `<tr><td colspan="8" class="empty">No retail bills for this date</td></tr>`;
       return;
     }
 
     body.innerHTML = "";
-    data.results.forEach(bill => {
+    mergedResults.forEach(bill => {
       const row = document.createElement("tr");
       row.innerHTML = `
         <td>${escapeHtml(bill.bill_number)}</td>
         <td>${formatDisplayDate(bill.date)}</td>
         <td>${escapeHtml(bill.customer_name || "Walk-in Customer")}</td>
-        <td>${escapeHtml(bill.payment_mode || "Cash")}</td>
+        <td>${escapeHtml(formatRetailBillMode(bill))}</td>
         <td>${formatBillMoney(bill.total_amount)}</td>
         <td>${formatBillMoney(bill.paid_amount)}</td>
         <td>${formatBillMoney(bill.outstanding_amount)}</td>
-        <td><button type="button" onclick="openRetailBill('${bill.id}')">View / Print</button></td>
+        <td><button type="button" onclick="openRetailBill('${bill.id}')">${bill.local_only ? "View / Print" : "View / Print"}</button></td>
       `;
       body.appendChild(row);
     });
@@ -466,6 +495,16 @@ async function loadRetailBills() {
 
 async function openRetailBill(billId) {
   try {
+    if (String(billId).startsWith("local-")) {
+      const localBill = getPendingRetailBills().find(bill => bill.id === billId);
+      if (!localBill) {
+        showToast("Offline bill not found");
+        return;
+      }
+      populateRetailFormFromBill(localBill);
+      return;
+    }
+
     const data = await apiCall(`/retail-bills/${billId}`, "GET", null, {}, { cache: false });
     if (data.error) {
       showToast(data.error);
@@ -558,6 +597,7 @@ function resetRetailForm() {
   currentRetailBill = null;
   retailDraftDirty = false;
   retailBillCompleted = false;
+  renderRetailOfflineBanner();
   refreshRetailBillNumber();
 }
 
@@ -634,6 +674,161 @@ function formatBillRate(value) {
 
 function formatBillMoney(value) {
   return Number(value || 0).toFixed(2);
+}
+
+function getPendingRetailBills() {
+  try {
+    return JSON.parse(localStorage.getItem(RETAIL_PENDING_STORAGE_KEY) || "[]");
+  } catch (e) {
+    console.error("Failed to parse pending retail bills", e);
+    return [];
+  }
+}
+
+function setPendingRetailBills(bills) {
+  localStorage.setItem(RETAIL_PENDING_STORAGE_KEY, JSON.stringify(bills));
+}
+
+function queueRetailBillForSync(draft) {
+  const pendingBills = getPendingRetailBills();
+  const localId = `local-${Date.now()}`;
+  const offlineBill = {
+    ...draft,
+    id: localId,
+    local_only: true,
+    sync_status: "Pending Sync",
+    payment_mode: draft.payment_mode || "Cash",
+    pending_since: new Date().toISOString(),
+    last_error: "No internet connection"
+  };
+
+  pendingBills.push(offlineBill);
+  setPendingRetailBills(pendingBills);
+  renderRetailOfflineBanner();
+  return offlineBill;
+}
+
+function shouldQueueRetailOffline(error) {
+  if (!navigator.onLine) return true;
+  const message = String(error?.message || error || "");
+  return message.includes("Network") || message.includes("fetch");
+}
+
+function computeNextRetailBillNumber(date, baseline = "1") {
+  const pendingBills = getPendingRetailBills().filter(bill => bill.date === date);
+  const maxPending = pendingBills.reduce((maxValue, bill) => {
+    const digits = Number(String(bill.bill_number || "").replace(/\D/g, "")) || 0;
+    return Math.max(maxValue, digits);
+  }, 0);
+  const baseValue = Number(String(baseline || "1").replace(/\D/g, "")) || 1;
+  return String(Math.max(baseValue, maxPending + 1));
+}
+
+function mergeRetailBillResults(serverBills, pendingBills) {
+  const merged = [...pendingBills, ...serverBills];
+  return merged.sort((a, b) => {
+    if ((a.date || "") !== (b.date || "")) return (b.date || "").localeCompare(a.date || "");
+    return Number(String(b.bill_number || "").replace(/\D/g, "")) - Number(String(a.bill_number || "").replace(/\D/g, ""));
+  });
+}
+
+function renderRetailOfflineBanner() {
+  const banner = document.getElementById("retailOfflineBanner");
+  if (!banner) return;
+
+  const pendingCount = getPendingRetailBills().length;
+  if (navigator.onLine && pendingCount === 0) {
+    banner.style.display = "none";
+    banner.innerHTML = "";
+    return;
+  }
+
+  const statusText = navigator.onLine
+    ? `${pendingCount} retail bill${pendingCount === 1 ? "" : "s"} waiting to sync.`
+    : `Offline mode. ${pendingCount} retail bill${pendingCount === 1 ? "" : "s"} saved locally.`;
+
+  banner.className = `notice ${navigator.onLine ? "warning" : "info"}`;
+  banner.style.display = "block";
+  banner.innerHTML = `
+    <strong>${statusText}</strong>
+    <div class="offline-banner-actions">
+      <button type="button" onclick="syncPendingRetailBills()">${navigator.onLine ? "Sync Now" : "Retry When Online"}</button>
+    </div>
+  `;
+}
+
+async function syncPendingRetailBills(silent = false) {
+  if (!navigator.onLine) {
+    renderRetailOfflineBanner();
+    return;
+  }
+
+  const pendingBills = getPendingRetailBills();
+  if (!pendingBills.length) {
+    renderRetailOfflineBanner();
+    return;
+  }
+
+  const remaining = [];
+  let syncedCount = 0;
+
+  for (const bill of pendingBills) {
+    try {
+      const response = await apiCall("/retail-bills", "POST", JSON.stringify({
+        date: bill.date,
+        bill_number: bill.bill_number,
+        cashier_name: bill.cashier_name,
+        customer_name: bill.customer_name,
+        customer_phone: bill.customer_phone,
+        customer_address: bill.customer_address,
+        payment_mode: bill.payment_mode,
+        paid_amount: bill.paid_amount,
+        notes: bill.notes,
+        items: bill.items
+      }), { "Content-Type": "application/json" }, { loader: false });
+
+      if (response?.error) {
+        remaining.push({ ...bill, last_error: response.error });
+        continue;
+      }
+
+      if (currentRetailBill?.id === bill.id) {
+        currentRetailBill = response.bill;
+        populateRetailFormFromBill(response.bill);
+      }
+      syncedCount += 1;
+    } catch (e) {
+      remaining.push({ ...bill, last_error: String(e?.message || e || "Sync failed") });
+    }
+  }
+
+  setPendingRetailBills(remaining);
+  renderRetailOfflineBanner();
+  await loadRetailBills();
+  await refreshRetailBillNumber();
+
+  if (!silent && syncedCount > 0) {
+    showToast(`${syncedCount} offline retail bill${syncedCount === 1 ? "" : "s"} synced`);
+  }
+}
+
+function attachRetailConnectivityListeners() {
+  if (retailConnectivityListenersAttached) return;
+
+  window.addEventListener("online", () => {
+    renderRetailOfflineBanner();
+    syncPendingRetailBills();
+  });
+  window.addEventListener("offline", () => {
+    renderRetailOfflineBanner();
+  });
+
+  retailConnectivityListenersAttached = true;
+}
+
+function formatRetailBillMode(bill) {
+  const mode = bill.payment_mode || "Cash";
+  return bill.local_only ? `${mode} • Pending` : mode;
 }
 
 function escapeHtml(value) {

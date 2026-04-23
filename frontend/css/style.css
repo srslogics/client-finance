@@ -583,6 +583,16 @@ input[type="file"] {
   background: linear-gradient(180deg, #fbfdfc, #f6faf8);
 }
 
+.offline-banner-actions {
+  margin-top: 10px;
+}
+
+.offline-banner-actions button {
+  min-height: 36px;
+  padding: 8px 14px;
+  box-shadow: none;
+}
+
 .retail-shortcuts-head {
   margin-bottom: 12px;
 }
