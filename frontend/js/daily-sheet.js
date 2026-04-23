@@ -25,7 +25,7 @@ async function loadDailySheet() {
 
     if (sheetType === "stock") {
       meta.className = "notice info";
-      meta.innerHTML = `<strong>${data.meta?.nag_available ? "NAG values are available." : "NAG and quantity are treated as the same thing in the app. Where exact NAG values are not stored yet, that column is left blank."}</strong><br>Retail bills created from the Retail Billing section are included automatically under the Retail and Retail Dressed sections. Known customers taking goods on credit appear below in Retail Credit Customers.`;
+      meta.innerHTML = `<strong>${data.meta?.nag_available ? "NAG values are available for this sheet." : "Some older records were saved without NAG, so blank NAG cells mean count was not captured on that day."}</strong><br>Retail bills created from Retail Billing are included automatically under Retail and Retail Dressed. Retail credit customers are shown separately below the stock summary.`;
 
       if (data.metric_cards?.length) {
         content.appendChild(createMetricCardStrip(data.metric_cards));
@@ -37,6 +37,12 @@ async function loadDailySheet() {
       (data.sales_sections || []).forEach(section => {
         content.appendChild(createSheetSection(section.title, section));
       });
+
+      if (data.retail_credit_sheet?.rows?.length) {
+        content.appendChild(createRetailCreditSection("Retail Credit Customers", data.retail_credit_sheet.rows, data.retail_credit_sheet.total));
+      }
+
+      content.appendChild(createFinalSummarySection(data.final_stock));
 
       if (data.rate_analysis) {
         const sections = [
@@ -54,12 +60,6 @@ async function loadDailySheet() {
         ].filter(Boolean);
         controls.forEach(section => content.appendChild(section));
       }
-
-      if (data.retail_credit_sheet?.rows?.length) {
-        content.appendChild(createRetailCreditSection("Retail Credit Customers", data.retail_credit_sheet.rows, data.retail_credit_sheet.total));
-      }
-
-      content.appendChild(createFinalSummarySection(data.final_stock));
       return;
     }
 

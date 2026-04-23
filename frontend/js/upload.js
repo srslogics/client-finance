@@ -121,6 +121,7 @@ async function handleUpload(inputId, endpoint, label, preview = false) {
     const rows = Array.from(document.querySelectorAll(".actual-stock-row"))
       .map(row => ({
         item_type: row.querySelector(".actualItem")?.value.trim(),
+        actual_quantity: row.querySelector(".actualNag")?.value,
         actual_weight: row.querySelector(".actualWeight")?.value
       }))
       .filter(row => row.item_type && row.actual_weight !== "");
@@ -131,8 +132,9 @@ async function handleUpload(inputId, endpoint, label, preview = false) {
     }
 
     const invalidWeight = rows.some(row => Number(row.actual_weight) < 0);
-    if (invalidWeight) {
-      showToast("Actual stock cannot be negative");
+    const invalidNag = rows.some(row => row.actual_quantity !== "" && Number(row.actual_quantity) < 0);
+    if (invalidWeight || invalidNag) {
+      showToast("Actual stock and NAG cannot be negative");
       return;
     }
 
@@ -151,8 +153,10 @@ async function handleUpload(inputId, endpoint, label, preview = false) {
         showToast(data.error);
         setUploadStatus("error", data.error);
       } else {
-        showToast(`Processed. Leakage: ${Number(data.total_leakage || 0).toLocaleString()} kg`);
-        setUploadStatus("success", `Day processed. Leakage: ${Number(data.total_leakage || 0).toLocaleString()} kg`);
+        const quantityLeakage = Number(data.total_quantity_leakage || 0);
+        const leakageText = `Leakage: ${Number(data.total_leakage || 0).toLocaleString()} kg${quantityLeakage ? `, ${quantityLeakage.toLocaleString()} NAG` : ""}`;
+        showToast(`Processed. ${leakageText}`);
+        setUploadStatus("success", `Day processed. ${leakageText}`);
       }
 
     } catch (e) {
@@ -177,6 +181,7 @@ async function handleUpload(inputId, endpoint, label, preview = false) {
     row.className = "upload-box actual-stock-row";
     row.innerHTML = `
       <input type="text" class="actualItem" placeholder="Hen type" list="itemSuggestions" autocomplete="off" oninput="suggestItems(this)">
+      <input type="number" class="actualNag" placeholder="Actual NAG" min="0" step="1">
       <input type="number" class="actualWeight" placeholder="Actual stock (kg)" min="0" step="0.01">
       <button onclick="removeActualStockRow(this)">Remove</button>
     `;

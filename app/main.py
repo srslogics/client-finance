@@ -26,6 +26,7 @@ def ensure_database_schema():
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS item_type VARCHAR"))
         conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS source_ref VARCHAR NOT NULL DEFAULT ''"))
+        conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS quantity NUMERIC"))
         conn.execute(text("UPDATE transactions SET source_ref = '' WHERE source_ref IS NULL"))
         conn.execute(text("ALTER TABLE retail_bill_items ADD COLUMN IF NOT EXISTS line_type VARCHAR NOT NULL DEFAULT 'STANDARD'"))
         conn.execute(text("ALTER TABLE transactions DROP CONSTRAINT IF EXISTS unique_txn"))
@@ -55,26 +56,40 @@ def ensure_database_schema():
                 id UUID PRIMARY KEY,
                 date DATE NOT NULL,
                 item_type VARCHAR NOT NULL,
+                opening_quantity NUMERIC,
                 opening_weight NUMERIC,
                 created_at TIMESTAMP DEFAULT now(),
                 CONSTRAINT unique_item_opening_stock UNIQUE (date, item_type)
             )
         """))
+        conn.execute(text("ALTER TABLE item_opening_stock ADD COLUMN IF NOT EXISTS opening_quantity NUMERIC"))
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS daily_item_stock (
                 id UUID PRIMARY KEY,
                 date DATE NOT NULL,
                 item_type VARCHAR NOT NULL,
+                opening_quantity NUMERIC,
                 opening_weight NUMERIC,
+                purchase_quantity NUMERIC,
                 purchase_weight NUMERIC,
+                sales_quantity NUMERIC,
                 sales_weight NUMERIC,
+                expected_closing_quantity NUMERIC,
                 expected_closing_weight NUMERIC,
+                actual_closing_quantity NUMERIC,
                 actual_closing_weight NUMERIC,
+                quantity_leakage NUMERIC,
                 leakage NUMERIC,
                 created_at TIMESTAMP DEFAULT now(),
                 CONSTRAINT unique_daily_item_stock UNIQUE (date, item_type)
             )
         """))
+        conn.execute(text("ALTER TABLE daily_item_stock ADD COLUMN IF NOT EXISTS opening_quantity NUMERIC"))
+        conn.execute(text("ALTER TABLE daily_item_stock ADD COLUMN IF NOT EXISTS purchase_quantity NUMERIC"))
+        conn.execute(text("ALTER TABLE daily_item_stock ADD COLUMN IF NOT EXISTS sales_quantity NUMERIC"))
+        conn.execute(text("ALTER TABLE daily_item_stock ADD COLUMN IF NOT EXISTS expected_closing_quantity NUMERIC"))
+        conn.execute(text("ALTER TABLE daily_item_stock ADD COLUMN IF NOT EXISTS actual_closing_quantity NUMERIC"))
+        conn.execute(text("ALTER TABLE daily_item_stock ADD COLUMN IF NOT EXISTS quantity_leakage NUMERIC"))
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS retail_bills (
                 id UUID PRIMARY KEY,
@@ -146,11 +161,11 @@ def health_check_head():
 
 
 TEMPLATES = {
-    "dealer": "DEALER,CATEGORY,HEN_TYPE,KGS,RATE_PER_KG\nABC Supplier,Dealer,Broiler,100,120\n",
-    "vendor": "VENDOR,HEN_TYPE,KGS,RATE_PER_KG\nXYZ Hotel,Broiler,40,150\n",
+    "dealer": "DEALER,CATEGORY,HEN_TYPE,NAG,KGS,RATE_PER_KG\nABC Supplier,Dealer,Broiler,52,100,120\n",
+    "vendor": "VENDOR,HEN_TYPE,NAG,KGS,RATE_PER_KG\nXYZ Hotel,Broiler,24,40,150\n",
     "payment": "DATE,PARTY,AMOUNT,PAYMENT_MODE,DIRECTION\n2026-04-21,XYZ Hotel,5000,Online,RECEIVED\n",
     "opening-balance": "DATE,PARTY,OPENING_BALANCE,BALANCE_TYPE\n2026-04-01,XYZ Hotel,25000,RECEIVABLE\n",
-    "opening-stock": "DATE,HEN_TYPE,OPENING_KGS\n2026-04-01,Broiler,500\n"
+    "opening-stock": "DATE,HEN_TYPE,OPENING_NAG,OPENING_KGS\n2026-04-01,Broiler,220,500\n"
 }
 
 
@@ -424,7 +439,7 @@ def latest_item_rates(db: Session, target_date):
         models.Transaction.item_type.isnot(None),
         models.Transaction.rate.isnot(None),
         models.Transaction.date <= target_date,
-        models.Transaction.type.in_(["PURCHASE", "SALE"])
+        models.Transaction.type == "PURCHASE"
     ).order_by(
         models.Transaction.item_type.asc(),
         models.Transaction.date.desc(),
@@ -458,7 +473,7 @@ def stock_item_names_query(db: Session):
 def format_sheet_row(label, weight=0, rate=0, amount=0, nag=None):
     return {
         "goods": label,
-        "nag": nag if nag is not None else "",
+        "nag": float(nag) if nag is not None else "",
         "weight": float(weight or 0),
         "rate": float(rate or 0),
         "total": float(amount or 0)
@@ -492,6 +507,22 @@ def decimal_ratio(amount, weight):
     if weight_value <= 0:
         return Decimal("0")
     return amount_value / weight_value
+
+
+def optional_decimal_sum(values):
+    found = False
+    total = Decimal("0")
+    for value in values:
+        if value not in [None, ""]:
+            found = True
+            total += Decimal(value or 0)
+    return total if found else None
+
+
+def optional_float(value):
+    if value in [None, ""]:
+        return None
+    return float(value)
 
 
 def format_rate_analysis_row(label, avg_rate=0, weight=0, amount=0, category=None, goods=None):
@@ -706,10 +737,14 @@ def upload_vendor(file: UploadFile = File(...), preview: bool = False, input_dat
     if error:
         return error
 
+    quantity_col = get_first_existing_column(df, ["NAG", "QTY", "QUANTITY", "PCS", "PIECES"])
+
     # --- Numeric validation ---
     try:
         df[weight_col] = df[weight_col].astype(float)
         df[rate_col] = df[rate_col].astype(float)
+        if quantity_col:
+            df[quantity_col] = df[quantity_col].astype(float)
     except:
         return {"error": "Invalid numeric values"}
 
@@ -731,6 +766,7 @@ def upload_vendor(file: UploadFile = File(...), preview: bool = False, input_dat
             party_name = str(row[party_col]).strip()
             weight = float(row[weight_col])
             rate = float(row[rate_col])
+            quantity = Decimal(str(float(row[quantity_col]))) if quantity_col and not pd.isna(row[quantity_col]) else None
             date = resolve_upload_date(row, date_col, fallback_date)
             if not date:
                 skipped += 1
@@ -738,9 +774,9 @@ def upload_vendor(file: UploadFile = File(...), preview: bool = False, input_dat
                 continue
             item_type = str(row[item_col]).strip()
             category = get_optional_row_value(row, ["CATEGORY"])
-            if weight <= 0 or rate <= 0:
+            if weight <= 0 or rate <= 0 or (quantity is not None and quantity < 0):
                 skipped += 1
-                row_error(errors, row_number, "KG and rate must be greater than zero")
+                row_error(errors, row_number, "NAG cannot be negative. KG and rate must be greater than zero")
                 continue
 
             # --- Party mapping ---
@@ -770,6 +806,7 @@ def upload_vendor(file: UploadFile = File(...), preview: bool = False, input_dat
                 type="SALE",
                 category=category,
                 item_type=item_type,
+                quantity=quantity,
                 weight=weight,
                 rate=rate,
                 amount=weight * rate,
@@ -868,10 +905,14 @@ def upload_dealer(file: UploadFile = File(...), preview: bool = False, input_dat
     if error:
         return error
 
+    quantity_col = get_first_existing_column(df, ["NAG", "QTY", "QUANTITY", "PCS", "PIECES"])
+
     # --- Numeric validation ---
     try:
         df[weight_col] = df[weight_col].astype(float)
         df[rate_col] = df[rate_col].astype(float)
+        if quantity_col:
+            df[quantity_col] = df[quantity_col].astype(float)
     except:
         return {"error": "Invalid numeric values"}
 
@@ -901,15 +942,16 @@ def upload_dealer(file: UploadFile = File(...), preview: bool = False, input_dat
             item_type = str(row[item_col]).strip()
             weight = float(row[weight_col])
             rate = float(row[rate_col])
+            quantity = Decimal(str(float(row[quantity_col]))) if quantity_col and not pd.isna(row[quantity_col]) else None
             date = resolve_upload_date(row, date_col, fallback_date)
             if not date:
                 skipped += 1
                 row_error(errors, row_number, "Invalid or missing date")
                 continue
 
-            if weight <= 0 or rate <= 0:
+            if weight <= 0 or rate <= 0 or (quantity is not None and quantity < 0):
                 skipped += 1
-                row_error(errors, row_number, "KG and rate must be greater than zero")
+                row_error(errors, row_number, "NAG cannot be negative. KG and rate must be greater than zero")
                 continue
 
             # --- Party mapping ---
@@ -939,6 +981,7 @@ def upload_dealer(file: UploadFile = File(...), preview: bool = False, input_dat
                 type="PURCHASE",
                 category=category,
                 item_type=item_type,
+                quantity=quantity,
                 weight=weight,
                 rate=rate,
                 amount=weight * rate,
@@ -1282,8 +1325,12 @@ def upload_opening_stock(file: UploadFile = File(...), preview: bool = False, db
     if error:
         return error
 
+    quantity_col = get_first_existing_column(df, ["OPENING_NAG", "OPENING QTY", "NAG", "QTY", "QUANTITY", "PCS", "PIECES"])
+
     try:
         df[weight_col] = df[weight_col].astype(float)
+        if quantity_col:
+            df[quantity_col] = df[quantity_col].astype(float)
     except Exception:
         return {"error": "Invalid opening stock values"}
 
@@ -1303,10 +1350,11 @@ def upload_opening_stock(file: UploadFile = File(...), preview: bool = False, db
             target_date = pd.to_datetime(row[date_col], dayfirst=True).date()
             item_type = str(row[item_col]).strip()
             opening_weight = Decimal(str(float(row[weight_col])))
+            opening_quantity = Decimal(str(float(row[quantity_col]))) if quantity_col and not pd.isna(row[quantity_col]) else None
 
-            if not item_type or opening_weight < 0:
+            if not item_type or opening_weight < 0 or (opening_quantity is not None and opening_quantity < 0):
                 skipped += 1
-                row_error(errors, row_number, "Invalid hen type or opening kg")
+                row_error(errors, row_number, "Invalid hen type, opening kg, or opening NAG")
                 continue
 
             existing_stock = db.query(models.ItemOpeningStock).filter_by(
@@ -1322,6 +1370,7 @@ def upload_opening_stock(file: UploadFile = File(...), preview: bool = False, db
             db.add(models.ItemOpeningStock(
                 date=target_date,
                 item_type=item_type,
+                opening_quantity=opening_quantity,
                 opening_weight=opening_weight
             ))
             seen_stock.add(stock_key)
@@ -1438,14 +1487,62 @@ def process_day_items(input_date: str, actual_stock: list[dict], db: Session = D
     for row in actual_stock:
         item = str(row.get("item_type", "")).strip()
         try:
-            actual = Decimal(str(row.get("actual_weight", "")))
+            actual_weight = Decimal(str(row.get("actual_weight", "")))
         except Exception:
             return {"error": f"Invalid actual stock for {item or 'item'}"}
 
-        if not item or actual < 0:
-            return {"error": "Invalid hen type or actual stock"}
+        actual_quantity_raw = row.get("actual_quantity")
+        try:
+            actual_quantity = Decimal(str(actual_quantity_raw)) if actual_quantity_raw not in [None, ""] else None
+        except Exception:
+            return {"error": f"Invalid actual NAG for {item or 'item'}"}
 
-        normalized_actuals[item] = actual
+        if not item or actual_weight < 0 or (actual_quantity is not None and actual_quantity < 0):
+            return {"error": "Invalid hen type, actual stock, or actual NAG"}
+
+        normalized_actuals[item] = {
+            "actual_weight": actual_weight,
+            "actual_quantity": actual_quantity
+        }
+
+    expected_items = set()
+    latest_previous_stock = {}
+    for row in db.query(models.DailyItemStock).filter(
+        models.DailyItemStock.date < target_date
+    ).order_by(
+        models.DailyItemStock.item_type.asc(),
+        models.DailyItemStock.date.desc()
+    ).all():
+        latest_previous_stock.setdefault(row.item_type, row)
+
+    for item_type, row in latest_previous_stock.items():
+        if Decimal(row.actual_closing_weight or 0) > 0 or Decimal(row.actual_closing_quantity or 0) > 0:
+            expected_items.add(item_type)
+
+    latest_openings = {}
+    for row in db.query(models.ItemOpeningStock).filter(
+        models.ItemOpeningStock.date <= target_date
+    ).order_by(
+        models.ItemOpeningStock.item_type.asc(),
+        models.ItemOpeningStock.date.desc()
+    ).all():
+        latest_openings.setdefault(row.item_type, row)
+
+    for item_type, row in latest_openings.items():
+        if Decimal(row.opening_weight or 0) > 0 or Decimal(row.opening_quantity or 0) > 0:
+            expected_items.add(item_type)
+
+    for row in db.query(models.Transaction.item_type).filter(
+        models.Transaction.date == target_date,
+        models.Transaction.type.in_(["PURCHASE", "SALE"]),
+        models.Transaction.item_type.isnot(None)
+    ).distinct().all():
+        if row.item_type:
+            expected_items.add(row.item_type)
+
+    missing_items = sorted(item for item in expected_items if item not in normalized_actuals)
+    if missing_items:
+        return {"error": f"Enter actual stock for all tracked hen types. Missing: {', '.join(missing_items[:8])}"}
 
     existing = db.query(models.DailyItemStock).filter(
         models.DailyItemStock.date == target_date,
@@ -1457,7 +1554,9 @@ def process_day_items(input_date: str, actual_stock: list[dict], db: Session = D
     results = []
 
     try:
-        for item_type, actual_weight in normalized_actuals.items():
+        for item_type, actuals in normalized_actuals.items():
+            actual_weight = actuals["actual_weight"]
+            actual_quantity = actuals["actual_quantity"]
             prev_stock = db.query(models.DailyItemStock).filter(
                 models.DailyItemStock.item_type == item_type,
                 models.DailyItemStock.date < target_date
@@ -1465,38 +1564,64 @@ def process_day_items(input_date: str, actual_stock: list[dict], db: Session = D
 
             if prev_stock:
                 opening_weight = Decimal(prev_stock.actual_closing_weight or 0)
+                opening_quantity = Decimal(prev_stock.actual_closing_quantity or 0) if prev_stock.actual_closing_quantity is not None else None
             else:
                 opening = db.query(models.ItemOpeningStock).filter(
                     models.ItemOpeningStock.item_type == item_type,
                     models.ItemOpeningStock.date <= target_date
                 ).order_by(models.ItemOpeningStock.date.desc()).first()
                 opening_weight = Decimal(opening.opening_weight or 0) if opening else Decimal("0")
+                opening_quantity = Decimal(opening.opening_quantity or 0) if opening and opening.opening_quantity is not None else None
 
             purchase_weight = db.query(func.sum(models.Transaction.weight)).filter(
                 models.Transaction.date == target_date,
                 models.Transaction.item_type == item_type,
                 models.Transaction.type == "PURCHASE"
             ).scalar() or 0
+            purchase_quantity_raw = db.query(func.sum(models.Transaction.quantity)).filter(
+                models.Transaction.date == target_date,
+                models.Transaction.item_type == item_type,
+                models.Transaction.type == "PURCHASE"
+            ).scalar()
 
             sales_weight = db.query(func.sum(models.Transaction.weight)).filter(
                 models.Transaction.date == target_date,
                 models.Transaction.item_type == item_type,
                 models.Transaction.type == "SALE"
             ).scalar() or 0
+            sales_quantity_raw = db.query(func.sum(models.Transaction.quantity)).filter(
+                models.Transaction.date == target_date,
+                models.Transaction.item_type == item_type,
+                models.Transaction.type == "SALE"
+            ).scalar()
 
             purchase_weight = Decimal(str(purchase_weight))
             sales_weight = Decimal(str(sales_weight))
+            purchase_quantity = Decimal(purchase_quantity_raw or 0) if purchase_quantity_raw is not None else None
+            sales_quantity = Decimal(sales_quantity_raw or 0) if sales_quantity_raw is not None else None
             expected_stock = opening_weight + purchase_weight - sales_weight
+            expected_quantity = None
+            if any(value is not None for value in [opening_quantity, purchase_quantity, sales_quantity]):
+                expected_quantity = Decimal(opening_quantity or 0) + Decimal(purchase_quantity or 0) - Decimal(sales_quantity or 0)
             leakage = expected_stock - actual_weight
+            quantity_leakage = None
+            if expected_quantity is not None or actual_quantity is not None:
+                quantity_leakage = Decimal(expected_quantity or 0) - Decimal(actual_quantity or 0)
 
             daily = models.DailyItemStock(
                 date=target_date,
                 item_type=item_type,
+                opening_quantity=opening_quantity,
                 opening_weight=opening_weight,
+                purchase_quantity=purchase_quantity,
                 purchase_weight=purchase_weight,
+                sales_quantity=sales_quantity,
                 sales_weight=sales_weight,
+                expected_closing_quantity=expected_quantity,
                 expected_closing_weight=expected_stock,
+                actual_closing_quantity=actual_quantity,
                 actual_closing_weight=actual_weight,
+                quantity_leakage=quantity_leakage,
                 leakage=leakage
             )
             db.add(daily)
@@ -1504,11 +1629,17 @@ def process_day_items(input_date: str, actual_stock: list[dict], db: Session = D
             results.append({
                 "date": str(target_date),
                 "item": item_type,
+                "opening_nag": optional_float(opening_quantity),
                 "opening_stock": float(opening_weight),
+                "purchase_nag": optional_float(purchase_quantity),
                 "purchase": float(purchase_weight),
+                "sales_nag": optional_float(sales_quantity),
                 "sales": float(sales_weight),
+                "expected_nag": optional_float(expected_quantity),
                 "expected_stock": float(expected_stock),
+                "actual_nag": optional_float(actual_quantity),
                 "actual_stock": float(actual_weight),
+                "quantity_leakage": optional_float(quantity_leakage),
                 "leakage": float(leakage)
             })
 
@@ -1522,8 +1653,11 @@ def process_day_items(input_date: str, actual_stock: list[dict], db: Session = D
         "status": "success",
         "date": str(target_date),
         "items": results,
+        "total_expected_nag": float(optional_decimal_sum(row["expected_nag"] for row in results) or 0),
         "total_expected_stock": sum(row["expected_stock"] for row in results),
+        "total_actual_nag": float(optional_decimal_sum(row["actual_nag"] for row in results) or 0),
         "total_actual_stock": sum(row["actual_stock"] for row in results),
+        "total_quantity_leakage": float(optional_decimal_sum(row["quantity_leakage"] for row in results) or 0),
         "total_leakage": sum(row["leakage"] for row in results)
     }
 
@@ -2541,6 +2675,7 @@ def create_retail_bill(payload: dict = Body(...), db: Session = Depends(get_db))
             type="SALE",
             category=transaction_category,
             item_type=item["item_name"],
+            quantity=item["quantity"],
             weight=item["weight"],
             rate=item["rate"],
             amount=item["amount"],
@@ -2555,6 +2690,7 @@ def create_retail_bill(payload: dict = Body(...), db: Session = Depends(get_db))
             type="PAYMENT",
             category="RECEIVED",
             item_type="Retail Bill Payment",
+            quantity=Decimal("0"),
             weight=0,
             rate=0,
             amount=paid_amount,
@@ -2700,27 +2836,41 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
     opening_source = {}
     if processed_rows:
         for row in processed_rows:
-            opening_source[row.item_type] = Decimal(row.opening_weight or 0)
+            opening_source[row.item_type] = {
+                "nag": Decimal(row.opening_quantity or 0) if row.opening_quantity is not None else None,
+                "weight": Decimal(row.opening_weight or 0)
+            }
     else:
         prev_rows = db.query(models.DailyItemStock).filter(
             models.DailyItemStock.date < target_date
         ).order_by(models.DailyItemStock.date.desc()).all()
         if prev_rows:
             for row in prev_rows:
-                opening_source.setdefault(row.item_type, Decimal(row.actual_closing_weight or 0))
+                opening_source.setdefault(row.item_type, {
+                    "nag": Decimal(row.actual_closing_quantity or 0) if row.actual_closing_quantity is not None else None,
+                    "weight": Decimal(row.actual_closing_weight or 0)
+                })
         else:
             for row in db.query(models.ItemOpeningStock).filter(
                 models.ItemOpeningStock.date <= target_date
             ).order_by(models.ItemOpeningStock.date.desc()).all():
-                opening_source.setdefault(row.item_type, Decimal(row.opening_weight or 0))
+                opening_source.setdefault(row.item_type, {
+                    "nag": Decimal(row.opening_quantity or 0) if row.opening_quantity is not None else None,
+                    "weight": Decimal(row.opening_weight or 0)
+                })
 
     opening_rows = []
+    opening_total_quantity = None
     opening_total_weight = Decimal("0")
     opening_total_amount = Decimal("0")
-    for item, weight in sorted(opening_source.items()):
+    for item, values in sorted(opening_source.items()):
+        nag = values["nag"]
+        weight = values["weight"]
         rate = rates.get(item, Decimal("0"))
         amount = weight * rate
-        opening_rows.append(format_sheet_row(item, weight, rate, amount))
+        opening_rows.append(format_sheet_row(item, weight, rate, amount, nag))
+        if nag is not None:
+            opening_total_quantity = Decimal(opening_total_quantity or 0) + nag
         opening_total_weight += weight
         opening_total_amount += amount
 
@@ -2730,15 +2880,19 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
     ).order_by(models.Transaction.item_type.asc(), models.Transaction.party_id.asc()).all()
 
     purchase_rows = []
+    purchase_total_quantity = None
     purchase_total_weight = Decimal("0")
     purchase_total_amount = Decimal("0")
     purchase_total_rate_weight = Decimal("0")
     for txn in purchase_rows_raw:
+        nag = Decimal(txn.quantity or 0) if txn.quantity is not None else None
         weight = Decimal(txn.weight or 0)
         rate = Decimal(txn.rate or 0)
         amount = Decimal(txn.amount or 0)
         label = txn.item_type or "Unknown"
-        purchase_rows.append(format_sheet_row(label, weight, rate, amount))
+        purchase_rows.append(format_sheet_row(label, weight, rate, amount, nag))
+        if nag is not None:
+            purchase_total_quantity = Decimal(purchase_total_quantity or 0) + nag
         purchase_total_weight += weight
         purchase_total_amount += amount
         purchase_total_rate_weight += weight * rate
@@ -2751,6 +2905,7 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
     sales_grouped = db.query(
         models.Transaction.category.label("category"),
         models.Transaction.item_type.label("item_type"),
+        func.sum(models.Transaction.quantity).label("quantity"),
         func.sum(models.Transaction.weight).label("weight"),
         func.sum(models.Transaction.amount).label("amount")
     ).filter(
@@ -2768,10 +2923,11 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
     for row in sales_grouped:
         section = (row.category or "OTHER").strip().upper()
         sales_sections.setdefault(section, [])
+        quantity = Decimal(row.quantity or 0) if row.quantity is not None else None
         weight = Decimal(row.weight or 0)
         amount = Decimal(row.amount or 0)
         avg_rate = decimal_ratio(amount, weight)
-        sales_sections[section].append(format_sheet_row(row.item_type or "Unknown", weight, avg_rate, amount))
+        sales_sections[section].append(format_sheet_row(row.item_type or "Unknown", weight, avg_rate, amount, quantity))
 
     section_order = ["WHOLESALE", "HOTEL", "RETAIL", "RETAIL DRESSED", "RETAILS", "SHOP", "CUSTOMER", "OTHER"]
     ordered_sales_sections = []
@@ -2779,27 +2935,37 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
         rows = sales_sections.get(section)
         if not rows:
             continue
+        total_quantity = optional_decimal_sum(Decimal(str(row["nag"])) for row in rows if row["nag"] not in ["", None])
         total_weight = sum(Decimal(str(row["weight"])) for row in rows)
         total_amount = sum(Decimal(str(row["total"])) for row in rows)
         avg_rate = (total_amount / total_weight) if total_weight > 0 else Decimal("0")
         ordered_sales_sections.append({
             "title": section.title(),
             "rows": rows,
-            "total": format_sheet_row("TOTAL", total_weight, avg_rate, total_amount)
+            "total": format_sheet_row("TOTAL", total_weight, avg_rate, total_amount, total_quantity)
         })
 
+    total_sales_quantity = optional_decimal_sum(
+        Decimal(t.quantity or 0) for t in sales_raw if t.quantity is not None
+    )
     total_sales_weight = sum(Decimal(t.weight or 0) for t in sales_raw)
     total_sales_amount = sum(Decimal(t.amount or 0) for t in sales_raw)
     total_sales_rate = (total_sales_amount / total_sales_weight) if total_sales_weight > 0 else Decimal("0")
 
     total_purchase_rate = (purchase_total_amount / purchase_total_weight) if purchase_total_weight > 0 else Decimal("0")
 
+    closing_quantity = None
+    if any(value is not None for value in [opening_total_quantity, purchase_total_quantity, total_sales_quantity]):
+        closing_quantity = Decimal(opening_total_quantity or 0) + Decimal(purchase_total_quantity or 0) - Decimal(total_sales_quantity or 0)
+
     closing_weight = opening_total_weight + purchase_total_weight - total_sales_weight
     closing_rate = total_purchase_rate if total_purchase_rate > 0 else Decimal("0")
     closing_amount = closing_weight * closing_rate
 
+    actual_quantity = optional_decimal_sum(Decimal(row.actual_closing_quantity or 0) for row in processed_rows if row.actual_closing_quantity is not None) if processed_rows else None
     actual_weight = sum(Decimal(row.actual_closing_weight or 0) for row in processed_rows) if processed_rows else Decimal("0")
     actual_amount = actual_weight * closing_rate
+    short_quantity = Decimal(closing_quantity or 0) - Decimal(actual_quantity or 0) if (closing_quantity is not None or actual_quantity is not None) else None
     short_weight = closing_weight - actual_weight
     short_amount = short_weight * closing_rate
 
@@ -2980,19 +3146,19 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
         "date": str(target_date),
         "opening_stock": {
             "rows": opening_rows,
-            "total": format_sheet_row("TOTAL", opening_total_weight, (opening_total_amount / opening_total_weight) if opening_total_weight > 0 else Decimal("0"), opening_total_amount)
+            "total": format_sheet_row("TOTAL", opening_total_weight, (opening_total_amount / opening_total_weight) if opening_total_weight > 0 else Decimal("0"), opening_total_amount, opening_total_quantity)
         },
         "purchase_stock": {
             "rows": purchase_rows,
-            "total": format_sheet_row("TOTAL", purchase_total_weight, total_purchase_rate, purchase_total_amount)
+            "total": format_sheet_row("TOTAL", purchase_total_weight, total_purchase_rate, purchase_total_amount, purchase_total_quantity)
         },
         "sales_sections": ordered_sales_sections,
         "final_stock": {
-            "total_purchases": format_sheet_row("TOTAL PURCHASES", purchase_total_weight, total_purchase_rate, purchase_total_amount),
-            "sales": format_sheet_row("SALES", total_sales_weight, total_sales_rate, total_sales_amount),
-            "closing_stock": format_sheet_row("CLOSING STOCK", closing_weight, closing_rate, closing_amount),
-            "actual_stock": format_sheet_row("ACTUAL STOCK", actual_weight, closing_rate, actual_amount),
-            "short_by": format_sheet_row("SHORT BY", short_weight, closing_rate, short_amount),
+            "total_purchases": format_sheet_row("TOTAL PURCHASES", purchase_total_weight, total_purchase_rate, purchase_total_amount, purchase_total_quantity),
+            "sales": format_sheet_row("SALES", total_sales_weight, total_sales_rate, total_sales_amount, total_sales_quantity),
+            "closing_stock": format_sheet_row("CLOSING STOCK", closing_weight, closing_rate, closing_amount, closing_quantity),
+            "actual_stock": format_sheet_row("ACTUAL STOCK", actual_weight, closing_rate, actual_amount, actual_quantity),
+            "short_by": format_sheet_row("SHORT BY", short_weight, closing_rate, short_amount, short_quantity),
             "gross_profit": {
                 "rate": float((gross_profit / total_sales_amount * Decimal("100")) if total_sales_amount > 0 else Decimal("0")),
                 "total": float(gross_profit)
@@ -3008,7 +3174,7 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
             }
         },
         "meta": {
-            "nag_available": False
+            "nag_available": any(value is not None for value in [opening_total_quantity, purchase_total_quantity, total_sales_quantity, actual_quantity])
         },
         "rate_analysis": {
             "purchase_by_hen_type": purchase_rate_rows,
@@ -3021,6 +3187,42 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
         },
         "metric_cards": [
             {
+                "label": "Opening Stock",
+                "value": float(opening_total_weight),
+                "suffix": " kg",
+                "subvalue": opening_total_quantity is not None and f"{float(opening_total_quantity):.0f} NAG" or None
+            },
+            {
+                "label": "Purchases",
+                "value": float(purchase_total_weight),
+                "suffix": " kg",
+                "subvalue": purchase_total_quantity is not None and f"{float(purchase_total_quantity):.0f} NAG" or None
+            },
+            {
+                "label": "Sales",
+                "value": float(total_sales_weight),
+                "suffix": " kg",
+                "subvalue": total_sales_quantity is not None and f"{float(total_sales_quantity):.0f} NAG" or None
+            },
+            {
+                "label": "Expected Closing",
+                "value": float(closing_weight),
+                "suffix": " kg",
+                "subvalue": closing_quantity is not None and f"{float(closing_quantity):.0f} NAG" or None
+            },
+            {
+                "label": "Actual Stock",
+                "value": float(actual_weight),
+                "suffix": " kg",
+                "subvalue": actual_quantity is not None and f"{float(actual_quantity):.0f} NAG" or None
+            },
+            {
+                "label": "Short By",
+                "value": float(short_weight),
+                "suffix": " kg",
+                "subvalue": short_quantity is not None and f"{float(short_quantity):.0f} NAG" or None
+            },
+            {
                 "label": "Avg Buy Rate",
                 "value": float(total_purchase_rate_value),
                 "suffix": "/kg"
@@ -3031,40 +3233,9 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
                 "suffix": "/kg"
             },
             {
-                "label": "Retail Credit",
-                "value": float(retail_credit_outstanding),
-                "prefix": "Rs "
-            },
-            {
-                "label": "Dressed Sale",
-                "value": float(dressed_sales_amount),
-                "prefix": "Rs ",
-                "subvalue": f"{float(dressed_sales_weight):.3f} kg"
-            },
-            {
-                "label": "Sell Through",
-                "value": float(sell_through),
-                "suffix": "%"
-            },
-            {
                 "label": "Leakage %",
                 "value": float(leakage_percent),
                 "suffix": "%"
-            },
-            {
-                "label": "Sale vs Buy Spread",
-                "value": float(realized_spread),
-                "suffix": "/kg"
-            },
-            {
-                "label": "Retail Mix",
-                "value": float(retail_mix_percent),
-                "suffix": "%"
-            },
-            {
-                "label": "Stock Cover",
-                "value": float(stock_coverage_days),
-                "suffix": " day"
             }
         ],
         "special_sections": {
