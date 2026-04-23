@@ -2736,14 +2736,30 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
         models.Transaction.type == "SALE"
     ).order_by(models.Transaction.category.asc().nulls_last(), models.Transaction.item_type.asc()).all()
 
+    sales_grouped = db.query(
+        models.Transaction.category.label("category"),
+        models.Transaction.item_type.label("item_type"),
+        func.sum(models.Transaction.weight).label("weight"),
+        func.sum(models.Transaction.amount).label("amount")
+    ).filter(
+        models.Transaction.date == target_date,
+        models.Transaction.type == "SALE"
+    ).group_by(
+        models.Transaction.category,
+        models.Transaction.item_type
+    ).order_by(
+        models.Transaction.category.asc().nulls_last(),
+        models.Transaction.item_type.asc()
+    ).all()
+
     sales_sections = {}
-    for txn in sales_raw:
-        section = (txn.category or "OTHER").strip().upper()
+    for row in sales_grouped:
+        section = (row.category or "OTHER").strip().upper()
         sales_sections.setdefault(section, [])
-        weight = Decimal(txn.weight or 0)
-        rate = Decimal(txn.rate or 0)
-        amount = Decimal(txn.amount or 0)
-        sales_sections[section].append(format_sheet_row(txn.item_type or "Unknown", weight, rate, amount))
+        weight = Decimal(row.weight or 0)
+        amount = Decimal(row.amount or 0)
+        avg_rate = decimal_ratio(amount, weight)
+        sales_sections[section].append(format_sheet_row(row.item_type or "Unknown", weight, avg_rate, amount))
 
     section_order = ["WHOLESALE", "HOTEL", "RETAIL", "RETAIL DRESSED", "RETAILS", "SHOP", "CUSTOMER", "OTHER"]
     ordered_sales_sections = []
