@@ -105,14 +105,14 @@ function addRetailItemRow(item = null) {
     </select>
     <input type="number" class="retailWeight" placeholder="Weight (kg)" min="0" step="0.001" oninput="recalcRetailLine(this)">
     <input type="number" class="retailRate" placeholder="Rate" min="0" step="0.01" oninput="recalcRetailLine(this)">
-    <input type="number" class="retailAmount" placeholder="Amount" min="0" step="0.01" oninput="renderRetailPreviewFromForm()">
+    <input type="number" class="retailAmount" placeholder="Amount" min="0" step="0.01" oninput="markRetailAmountDirty(this)">
     <button type="button" onclick="removeRetailItemRow(this)">Remove</button>
   `;
   container.appendChild(row);
 
   if (item) {
     row.querySelector(".retailItemName").value = item.item_name || "";
-    row.querySelector(".retailQty").value = item.quantity || "";
+    row.querySelector(".retailQty").value = item.nag || item.quantity || "";
     row.querySelector(".retailUnit").value = item.unit || "KGS";
     row.querySelector(".retailWeight").value = item.weight || "";
     row.querySelector(".retailRate").value = item.rate || "";
@@ -151,9 +151,14 @@ function addShortcutRetailItem(itemName) {
 function removeRetailItemRow(button) {
   const rows = document.querySelectorAll(".retail-item-row");
   if (rows.length <= 1) {
-    button.closest(".retail-item-row")?.querySelectorAll("input").forEach(input => {
+    const row = button.closest(".retail-item-row");
+    row?.querySelectorAll("input").forEach(input => {
       input.value = "";
     });
+    const unitSelect = row?.querySelector(".retailUnit");
+    if (unitSelect) unitSelect.value = "KGS";
+    retailDraftDirty = true;
+    retailBillCompleted = false;
     renderRetailPreviewFromForm();
     return;
   }
@@ -246,10 +251,43 @@ function renderRetailPreviewFromForm() {
   renderRetailPreview(buildRetailBillFromForm(), true);
 }
 
+function markRetailAmountDirty() {
+  retailDraftDirty = true;
+  retailBillCompleted = false;
+  renderRetailPreviewFromForm();
+}
+
 function markRetailDraftDirty() {
   retailDraftDirty = true;
   retailBillCompleted = false;
   renderRetailPreviewFromForm();
+}
+
+function populateRetailFormFromBill(bill) {
+  const rows = document.getElementById("retailItemRows");
+  if (!rows || !bill) return;
+
+  document.getElementById("retailDate").value = bill.date || formatDateInput(new Date());
+  document.getElementById("retailBillNumber").value = bill.bill_number || "";
+  document.getElementById("retailCashier").value = bill.cashier_name || "admin";
+  document.getElementById("retailPaymentMode").value = bill.payment_mode || "Cash";
+  document.getElementById("retailCustomerName").value = bill.customer_name || "";
+  document.getElementById("retailCustomerPhone").value = bill.customer_phone || "";
+  document.getElementById("retailCustomerAddress").value = bill.customer_address || "";
+  document.getElementById("retailPaidAmount").value = bill.paid_amount ?? "";
+  document.getElementById("retailNotes").value = bill.notes || "";
+
+  rows.innerHTML = "";
+  (bill.items || []).forEach(item => addRetailItemRow(item));
+
+  if (!(bill.items || []).length) {
+    addRetailItemRow();
+  }
+
+  currentRetailBill = bill;
+  retailDraftDirty = false;
+  retailBillCompleted = true;
+  renderRetailPreview(currentRetailBill);
 }
 
 function renderRetailPreview(bill, isDraft = false) {
@@ -434,10 +472,7 @@ async function openRetailBill(billId) {
       return;
     }
 
-    currentRetailBill = data;
-    retailDraftDirty = false;
-    retailBillCompleted = true;
-    renderRetailPreview(currentRetailBill);
+    populateRetailFormFromBill(data);
   } catch (e) {
     console.error(e);
     showToast("Unable to open retail bill");

@@ -144,8 +144,8 @@ def health_check_head():
 
 
 TEMPLATES = {
-    "dealer": "DATE,DEALER,CATEGORY,HEN_TYPE,KGS,RATE_PER_KG,PAYMENT_MODE\n2026-04-21,ABC Supplier,Dealer,Broiler,100,120,Bank\n",
-    "vendor": "DATE,VENDOR,HEN_TYPE,KGS,RATE_PER_KG,PAYMENT_MODE\n2026-04-21,XYZ Hotel,Broiler,40,150,Cash\n",
+    "dealer": "DEALER,CATEGORY,HEN_TYPE,KGS,RATE_PER_KG\nABC Supplier,Dealer,Broiler,100,120\n",
+    "vendor": "VENDOR,HEN_TYPE,KGS,RATE_PER_KG\nXYZ Hotel,Broiler,40,150\n",
     "payment": "DATE,PARTY,AMOUNT,PAYMENT_MODE,DIRECTION\n2026-04-21,XYZ Hotel,5000,Online,RECEIVED\n",
     "opening-balance": "DATE,PARTY,OPENING_BALANCE,BALANCE_TYPE\n2026-04-01,XYZ Hotel,25000,RECEIVABLE\n",
     "opening-stock": "DATE,HEN_TYPE,OPENING_KGS\n2026-04-01,Broiler,500\n"
@@ -585,8 +585,15 @@ def get_optional_row_value(row, candidates):
     return None
 
 
+def resolve_upload_date(row, date_col, fallback_date):
+    if date_col and date_col in row.index and not pd.isna(row[date_col]):
+        return pd.to_datetime(row[date_col], dayfirst=True).date()
+
+    return fallback_date
+
+
 @app.post("/upload/vendor")
-def upload_vendor(file: UploadFile = File(...), preview: bool = False, db: Session = Depends(get_db)):
+def upload_vendor(file: UploadFile = File(...), preview: bool = False, input_date: str = None, db: Session = Depends(get_db)):
 
     import io
     import hashlib
@@ -624,9 +631,10 @@ def upload_vendor(file: UploadFile = File(...), preview: bool = False, db: Sessi
 
     df.columns = df.columns.str.strip().str.upper()
 
-    date_col, error = require_column(df, ["DATE"], "DATE")
-    if error:
-        return error
+    date_col = get_first_existing_column(df, ["DATE"])
+    fallback_date = parse_input_date(input_date) if input_date else None
+    if not date_col and not fallback_date:
+        return {"error": "Provide DATE column in file or select the upload date in the app"}
 
     party_col, error = require_column(df, ["VENDOR", "PARTY", "NAME"], "VENDOR")
     if error:
@@ -669,15 +677,13 @@ def upload_vendor(file: UploadFile = File(...), preview: bool = False, db: Sessi
             party_name = str(row[party_col]).strip()
             weight = float(row[weight_col])
             rate = float(row[rate_col])
-            date = pd.to_datetime(row[date_col], dayfirst=True).date()
+            date = resolve_upload_date(row, date_col, fallback_date)
+            if not date:
+                skipped += 1
+                row_error(errors, row_number, "Invalid or missing date")
+                continue
             item_type = str(row[item_col]).strip()
             category = get_optional_row_value(row, ["CATEGORY"])
-            payment_mode = (
-                str(row["PAYMENT_MODE"]).strip()
-                if "PAYMENT_MODE" in df.columns and not pd.isna(row["PAYMENT_MODE"])
-                else "NA"
-            )
-
             if weight <= 0 or rate <= 0:
                 skipped += 1
                 row_error(errors, row_number, "KG and rate must be greater than zero")
@@ -713,7 +719,7 @@ def upload_vendor(file: UploadFile = File(...), preview: bool = False, db: Sessi
                 weight=weight,
                 rate=rate,
                 amount=weight * rate,
-                payment_mode=payment_mode
+                payment_mode="NA"
             )
 
             db.add(txn)
@@ -745,7 +751,7 @@ def upload_vendor(file: UploadFile = File(...), preview: bool = False, db: Sessi
     return upload_result(inserted, skipped, errors)
 
 @app.post("/upload/dealer")
-def upload_dealer(file: UploadFile = File(...), preview: bool = False, db: Session = Depends(get_db)):
+def upload_dealer(file: UploadFile = File(...), preview: bool = False, input_date: str = None, db: Session = Depends(get_db)):
 
     import io
     import hashlib
@@ -783,9 +789,10 @@ def upload_dealer(file: UploadFile = File(...), preview: bool = False, db: Sessi
 
     df.columns = df.columns.str.strip().str.upper()
 
-    date_col, error = require_column(df, ["DATE"], "DATE")
-    if error:
-        return error
+    date_col = get_first_existing_column(df, ["DATE"])
+    fallback_date = parse_input_date(input_date) if input_date else None
+    if not date_col and not fallback_date:
+        return {"error": "Provide DATE column in file or select the upload date in the app"}
 
     party_col, error = require_column(df, ["DEALER", "PARTY", "NAME"], "DEALER")
     if error:
@@ -840,13 +847,11 @@ def upload_dealer(file: UploadFile = File(...), preview: bool = False, db: Sessi
             item_type = str(row[item_col]).strip()
             weight = float(row[weight_col])
             rate = float(row[rate_col])
-            date = pd.to_datetime(row[date_col], dayfirst=True).date()
-
-            payment_mode = (
-                str(row["PAYMENT_MODE"]).strip()
-                if "PAYMENT_MODE" in df.columns and not pd.isna(row["PAYMENT_MODE"])
-                else "NA"
-            )
+            date = resolve_upload_date(row, date_col, fallback_date)
+            if not date:
+                skipped += 1
+                row_error(errors, row_number, "Invalid or missing date")
+                continue
 
             if weight <= 0 or rate <= 0:
                 skipped += 1
@@ -883,7 +888,7 @@ def upload_dealer(file: UploadFile = File(...), preview: bool = False, db: Sessi
                 weight=weight,
                 rate=rate,
                 amount=weight * rate,
-                payment_mode=payment_mode
+                payment_mode="NA"
             )
 
             db.add(txn)

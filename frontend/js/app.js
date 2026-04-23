@@ -30,6 +30,18 @@ function loadPage(page) {
             <div class="section-head">
               <div>
                 <span>Step 1</span>
+                <h2>Select Working Date</h2>
+              </div>
+            </div>
+            <div class="upload-box">
+              <input type="date" id="uploadWorkingDate">
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-head">
+              <div>
+                <span>Step 2</span>
                 <h2>Download Daily Templates</h2>
               </div>
             </div>
@@ -45,7 +57,7 @@ function loadPage(page) {
           <div class="section">
             <div class="section-head">
               <div>
-                <span>Step 2</span>
+                <span>Step 3</span>
                 <h2>Dealer Purchase File</h2>
               </div>
             </div>
@@ -59,7 +71,7 @@ function loadPage(page) {
           <div class="section">
             <div class="section-head">
               <div>
-                <span>Step 3</span>
+                <span>Step 4</span>
                 <h2>Vendor Sales File</h2>
               </div>
             </div>
@@ -73,7 +85,7 @@ function loadPage(page) {
           <div class="section">
             <div class="section-head">
               <div>
-                <span>Step 4</span>
+                <span>Step 5</span>
                 <h2>Payment File</h2>
               </div>
             </div>
@@ -87,7 +99,7 @@ function loadPage(page) {
           <div class="section">
             <div class="section-head">
               <div>
-                <span>Step 5</span>
+                <span>Step 6</span>
                 <h2>Process Day</h2>
               </div>
             </div>
@@ -142,7 +154,9 @@ function loadPage(page) {
       `;
 
       setTimeout(() => {
+        const uploadWorkingDate = document.getElementById("uploadWorkingDate");
         const processDate = document.getElementById("processDate");
+        if (uploadWorkingDate) uploadWorkingDate.value = formatDateInput(new Date());
         if (processDate) processDate.value = formatDateInput(new Date());
       }, 100);
     }

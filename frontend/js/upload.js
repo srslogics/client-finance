@@ -34,12 +34,16 @@ async function handleUpload(inputId, endpoint, label, preview = false) {
 
     const formData = new FormData();
     formData.append("file", file);
+    const workingDate = document.getElementById("uploadWorkingDate")?.value;
 
     // 🔥 Disable button during upload
     toggleButtons(true);
 
     try {
-      const url = preview ? `${endpoint}?preview=true` : endpoint;
+      const params = new URLSearchParams();
+      if (preview) params.set("preview", "true");
+      if (workingDate) params.set("input_date", workingDate);
+      const url = params.toString() ? `${endpoint}?${params.toString()}` : endpoint;
       const data = await apiCall(url, "POST", formData);
 
       if (data.error) {
