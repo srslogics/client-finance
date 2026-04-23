@@ -346,6 +346,14 @@ function loadPage(page) {
                 <input type="text" id="retailCustomerAddress" placeholder="Address (optional)">
               </div>
 
+              <div class="retail-shortcuts">
+                <div class="retail-shortcuts-head">
+                  <span>Quick Add Items</span>
+                  <p>Tap a common item to add it directly into the bill.</p>
+                </div>
+                <div id="retailShortcutItems" class="retail-shortcut-list"></div>
+              </div>
+
               <div id="retailItemRows" class="retail-items"></div>
 
               <datalist id="retailItemSuggestions"></datalist>

@@ -25,7 +25,7 @@ async function loadDailySheet() {
 
     if (sheetType === "stock") {
       meta.className = "notice info";
-      meta.innerHTML = `<strong>${data.meta?.nag_available ? "NAG values are available." : "NAG values are not stored in the app yet, so that column is left blank."}</strong><br>Retail bills created from the Retail Billing section are included automatically under the Retail section, and known customers taking goods on credit appear below in Retail Credit Customers.`;
+      meta.innerHTML = `<strong>${data.meta?.nag_available ? "NAG values are available." : "NAG and quantity are treated as the same thing in the app. Where exact NAG values are not stored yet, that column is left blank."}</strong><br>Retail bills created from the Retail Billing section are included automatically under the Retail section, and known customers taking goods on credit appear below in Retail Credit Customers.`;
 
       content.appendChild(createSheetSection(`Opening Stock ${formatDisplayDate(date)}`, data.opening_stock));
       content.appendChild(createSheetSection("Purchase Stock", data.purchase_stock));

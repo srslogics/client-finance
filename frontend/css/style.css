@@ -575,6 +575,54 @@ input[type="file"] {
   resize: vertical;
 }
 
+.retail-shortcuts {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fbfdfc, #f6faf8);
+}
+
+.retail-shortcuts-head {
+  margin-bottom: 12px;
+}
+
+.retail-shortcuts-head span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--brand-dark);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.retail-shortcuts-head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.retail-shortcut-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.retail-shortcut-chip {
+  min-height: 38px;
+  padding: 8px 14px;
+  border: 1px solid #dfc48f;
+  border-radius: 999px;
+  background: #fff7e8;
+  color: var(--brand-dark);
+  box-shadow: none;
+}
+
+.retail-shortcut-chip:hover {
+  background: #ffe8bd;
+}
+
 .retail-items {
   display: flex;
   flex-direction: column;

@@ -5,6 +5,15 @@ const RETAIL_SHOP_PROFILE = {
   phone: "9371291195 / 7972329562"
 };
 
+const RETAIL_SHORTCUT_ITEMS = [
+  "CB",
+  "BB",
+  "COCREL",
+  "DESI",
+  "LEGOAN",
+  "LOOS"
+];
+
 let retailItemSuggestTimer = null;
 let retailCustomerSuggestTimer = null;
 let currentRetailBill = null;
@@ -40,9 +49,25 @@ function initRetailPage() {
   });
 
   addRetailItemRow();
+  renderRetailShortcuts();
   refreshRetailBillNumber();
   renderRetailPreviewFromForm();
   loadRetailBills();
+}
+
+function renderRetailShortcuts() {
+  const container = document.getElementById("retailShortcutItems");
+  if (!container) return;
+
+  container.innerHTML = "";
+  RETAIL_SHORTCUT_ITEMS.forEach(itemName => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "retail-shortcut-chip";
+    button.innerText = itemName;
+    button.onclick = () => addShortcutRetailItem(itemName);
+    container.appendChild(button);
+  });
 }
 
 async function refreshRetailBillNumber() {
@@ -67,7 +92,7 @@ function addRetailItemRow(item = null) {
   row.className = "retail-item-row";
   row.innerHTML = `
     <input type="text" class="retailItemName" placeholder="Item name" list="retailItemSuggestions" autocomplete="off" oninput="suggestRetailItems(this); recalcRetailLine(this)">
-    <input type="number" class="retailQty" placeholder="Qty" min="0" step="0.01" oninput="recalcRetailLine(this)">
+    <input type="number" class="retailQty" placeholder="NAG" min="0" step="0.01" oninput="recalcRetailLine(this)">
     <select class="retailUnit" onchange="recalcRetailLine(this)">
       <option value="KGS">KGS</option>
       <option value="PCS">PCS</option>
@@ -91,6 +116,30 @@ function addRetailItemRow(item = null) {
   retailDraftDirty = true;
   retailBillCompleted = false;
   renderRetailPreviewFromForm();
+}
+
+function addShortcutRetailItem(itemName) {
+  const rows = Array.from(document.querySelectorAll(".retail-item-row"));
+  let targetRow = rows.find(row => !row.querySelector(".retailItemName")?.value.trim());
+
+  if (!targetRow) {
+    addRetailItemRow();
+    targetRow = Array.from(document.querySelectorAll(".retail-item-row")).at(-1);
+  }
+
+  const itemInput = targetRow?.querySelector(".retailItemName");
+  const qtyInput = targetRow?.querySelector(".retailQty");
+  const unitSelect = targetRow?.querySelector(".retailUnit");
+
+  if (!itemInput || !qtyInput || !unitSelect) return;
+
+  itemInput.value = itemName;
+  if (!qtyInput.value) qtyInput.value = "1";
+  if (!unitSelect.value) unitSelect.value = "KGS";
+
+  retailDraftDirty = true;
+  retailBillCompleted = false;
+  recalcRetailLine(itemInput);
 }
 
 function removeRetailItemRow(button) {
@@ -143,6 +192,7 @@ function collectRetailItemsFromForm() {
   return Array.from(document.querySelectorAll(".retail-item-row"))
     .map(row => ({
       item_name: row.querySelector(".retailItemName")?.value.trim(),
+      nag: Number(row.querySelector(".retailQty")?.value || 0),
       quantity: Number(row.querySelector(".retailQty")?.value || 0),
       unit: row.querySelector(".retailUnit")?.value || "KGS",
       weight: Number(row.querySelector(".retailWeight")?.value || 0),
@@ -155,8 +205,8 @@ function collectRetailItemsFromForm() {
 function buildRetailBillFromForm() {
   const items = collectRetailItemsFromForm();
   const totalAmount = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-  const totalQuantity = items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
-  const totalWeight = items.reduce((sum, item) => sum + Number(item.weight || (item.unit === "KGS" ? item.quantity : 0) || 0), 0);
+  const totalNag = items.reduce((sum, item) => sum + Number(item.nag || item.quantity || 0), 0);
+  const totalWeight = items.reduce((sum, item) => sum + Number(item.weight || (item.unit === "KGS" ? item.nag || item.quantity : 0) || 0), 0);
   const paymentMode = document.getElementById("retailPaymentMode")?.value || "Cash";
   const rawPaidAmount = document.getElementById("retailPaidAmount")?.value;
   const paidAmount = Math.min(
@@ -178,7 +228,8 @@ function buildRetailBillFromForm() {
     outstanding_amount: outstandingAmount,
     requires_customer: outstandingAmount > 0,
     total_amount: totalAmount,
-    total_quantity: totalQuantity,
+    total_nag: totalNag,
+    total_quantity: totalNag,
     total_weight: totalWeight,
     notes: document.getElementById("retailNotes")?.value.trim() || "",
     items
@@ -208,7 +259,7 @@ function renderRetailPreview(bill, isDraft = false) {
     <tr>
       <td>${index + 1}</td>
       <td>${escapeHtml(item.item_name)}</td>
-      <td>${formatBillQuantity(item.quantity, item.unit)}</td>
+      <td>${formatBillQuantity(item.nag || item.quantity, item.unit)}</td>
       <td>${formatBillRate(item.rate)}</td>
       <td>${formatBillMoney(item.amount)}</td>
     </tr>
@@ -245,7 +296,7 @@ function renderRetailPreview(bill, isDraft = false) {
           <tr>
             <th>Sl</th>
             <th>Item Name</th>
-            <th>Qty</th>
+            <th>NAG</th>
             <th>Rate</th>
             <th>Amount</th>
           </tr>
@@ -255,7 +306,7 @@ function renderRetailPreview(bill, isDraft = false) {
 
       <div class="thermal-summary">
         <p><span>Total Item(s)</span><strong>${bill.items.length}</strong></p>
-        <p><span>Total Qty</span><strong>${Number(bill.total_quantity || 0).toFixed(3)}</strong></p>
+        <p><span>Total NAG</span><strong>${Number(bill.total_nag || bill.total_quantity || 0).toFixed(3)}</strong></p>
         <p><span>Total Weight</span><strong>${Number(bill.total_weight || 0).toFixed(3)} kg</strong></p>
         <p class="thermal-total"><span>TOTAL</span><strong>${formatBillMoney(bill.total_amount)}</strong></p>
         <p><span>${escapeHtml(bill.payment_mode || "Cash")} Payment</span><strong>${formatBillMoney(bill.paid_amount)}</strong></p>
@@ -519,7 +570,7 @@ function suggestRetailCustomers() {
 }
 
 function formatBillQuantity(quantity, unit) {
-  return `${Number(quantity || 0).toFixed(unit === "PCS" ? 0 : 3)} ${unit}`;
+  return `${Number(quantity || 0).toFixed(unit === "PCS" ? 0 : 3)} ${unit === "PCS" ? "NAG" : unit}`;
 }
 
 function formatBillRate(value) {

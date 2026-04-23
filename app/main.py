@@ -490,6 +490,7 @@ def serialize_retail_bill(bill, items):
         "customer_address": bill.customer_address or "",
         "cashier_name": bill.cashier_name or "admin",
         "payment_mode": bill.payment_mode or "Cash",
+        "total_nag": float(bill.total_quantity or 0),
         "total_quantity": float(bill.total_quantity or 0),
         "total_weight": float(bill.total_weight or 0),
         "total_amount": float(bill.total_amount or 0),
@@ -500,6 +501,7 @@ def serialize_retail_bill(bill, items):
             {
                 "line_order": item.line_order,
                 "item_name": item.item_name,
+                "nag": float(item.quantity or 0),
                 "quantity": float(item.quantity or 0),
                 "unit": item.unit or "KGS",
                 "weight": float(item.weight or 0),
@@ -2367,7 +2369,7 @@ def create_retail_bill(payload: dict = Body(...), db: Session = Depends(get_db))
         if not item_name:
             return {"error": f"Item name missing on row {index}"}
 
-        quantity = parse_decimal(raw_item.get("quantity"))
+        quantity = parse_decimal(raw_item.get("nag", raw_item.get("quantity")))
         rate = parse_decimal(raw_item.get("rate"))
         unit = str(raw_item.get("unit") or "KGS").strip().upper()
         weight = parse_decimal(raw_item.get("weight"))
