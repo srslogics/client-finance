@@ -8,6 +8,8 @@ const RETAIL_SHOP_PROFILE = {
 let retailItemSuggestTimer = null;
 let retailCustomerSuggestTimer = null;
 let currentRetailBill = null;
+let retailDraftDirty = false;
+let retailBillCompleted = false;
 
 function initRetailPage() {
   const dateInput = document.getElementById("retailDate");
@@ -33,8 +35,8 @@ function initRetailPage() {
   formIds.forEach(id => {
     const input = document.getElementById(id);
     if (!input) return;
-    input.addEventListener("input", renderRetailPreviewFromForm);
-    input.addEventListener("change", renderRetailPreviewFromForm);
+    input.addEventListener("input", markRetailDraftDirty);
+    input.addEventListener("change", markRetailDraftDirty);
   });
 
   addRetailItemRow();
@@ -86,6 +88,8 @@ function addRetailItemRow(item = null) {
     row.querySelector(".retailAmount").value = item.amount || "";
   }
 
+  retailDraftDirty = true;
+  retailBillCompleted = false;
   renderRetailPreviewFromForm();
 }
 
@@ -100,6 +104,8 @@ function removeRetailItemRow(button) {
   }
 
   button.closest(".retail-item-row")?.remove();
+  retailDraftDirty = true;
+  retailBillCompleted = false;
   renderRetailPreviewFromForm();
 }
 
@@ -128,6 +134,8 @@ function recalcRetailLine(source) {
     amountInput.value = (base * rate).toFixed(2);
   }
 
+  retailDraftDirty = true;
+  retailBillCompleted = false;
   renderRetailPreviewFromForm();
 }
 
@@ -179,6 +187,12 @@ function buildRetailBillFromForm() {
 
 function renderRetailPreviewFromForm() {
   renderRetailPreview(buildRetailBillFromForm(), true);
+}
+
+function markRetailDraftDirty() {
+  retailDraftDirty = true;
+  retailBillCompleted = false;
+  renderRetailPreviewFromForm();
 }
 
 function renderRetailPreview(bill, isDraft = false) {
@@ -294,17 +308,20 @@ async function saveRetailBill() {
 
     if (data.error) {
       showToast(data.error);
-      return;
+      return null;
     }
 
     currentRetailBill = data.bill;
+    retailDraftDirty = false;
+    retailBillCompleted = true;
     renderRetailPreview(currentRetailBill);
     showToast(`Retail bill ${currentRetailBill.bill_number} saved`);
     await loadRetailBills();
-    await refreshRetailBillNumber();
+    return currentRetailBill;
   } catch (e) {
     console.error(e);
     showToast("Retail bill save failed");
+    return null;
   }
 }
 
@@ -355,6 +372,8 @@ async function openRetailBill(billId) {
     }
 
     currentRetailBill = data;
+    retailDraftDirty = false;
+    retailBillCompleted = true;
     renderRetailPreview(currentRetailBill);
   } catch (e) {
     console.error(e);
@@ -362,8 +381,14 @@ async function openRetailBill(billId) {
   }
 }
 
-function printCurrentRetailBill() {
-  const bill = currentRetailBill || buildRetailBillFromForm();
+async function printCurrentRetailBill() {
+  let bill = currentRetailBill;
+  const draft = buildRetailBillFromForm();
+
+  if (!bill || retailDraftDirty) {
+    bill = await saveRetailBill();
+  }
+
   if (!bill || !(bill.items || []).length) {
     showToast("No bill ready to print");
     return;
@@ -407,9 +432,19 @@ function printCurrentRetailBill() {
     </html>
   `);
   printWindow.document.close();
+
+  currentRetailBill = bill;
+  retailDraftDirty = false;
+  retailBillCompleted = true;
 }
 
 function resetRetailForm() {
+  const draftHasItems = collectRetailItemsFromForm().length > 0;
+  if (draftHasItems && !retailBillCompleted) {
+    showToast("Save or print this bill before starting a new one");
+    return;
+  }
+
   const rows = document.getElementById("retailItemRows");
   if (rows) rows.innerHTML = "";
 
@@ -423,6 +458,8 @@ function resetRetailForm() {
 
   addRetailItemRow();
   currentRetailBill = null;
+  retailDraftDirty = false;
+  retailBillCompleted = false;
   refreshRetailBillNumber();
 }
 
