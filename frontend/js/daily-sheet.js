@@ -47,6 +47,14 @@ async function loadDailySheet() {
         sections.forEach(section => content.appendChild(section));
       }
 
+      if (data.business_controls) {
+        const controls = [
+          createCategoryMixSection("Category Mix", data.business_controls.category_mix || []),
+          createItemPerformanceSection("Hen Type Performance", data.business_controls.item_performance || [])
+        ].filter(Boolean);
+        controls.forEach(section => content.appendChild(section));
+      }
+
       if (data.retail_credit_sheet?.rows?.length) {
         content.appendChild(createRetailCreditSection("Retail Credit Customers", data.retail_credit_sheet.rows, data.retail_credit_sheet.total));
       }
@@ -291,6 +299,98 @@ function createRateAnalysisSection(title, rows, showCategoryAndGoods = false) {
     appendDailyCell(tr, formatNumber(row.avg_rate));
     appendDailyCell(tr, formatNumber(row.weight));
     appendDailyCell(tr, formatMoneyCompact(row.amount));
+    body.appendChild(tr);
+  });
+
+  table.appendChild(body);
+  tableWrap.appendChild(table);
+  wrapper.appendChild(tableWrap);
+  return wrapper;
+}
+
+function createCategoryMixSection(title, rows) {
+  if (!rows.length) return null;
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "daily-sheet-section";
+
+  const heading = document.createElement("h3");
+  heading.innerText = title;
+  wrapper.appendChild(heading);
+
+  const tableWrap = document.createElement("div");
+  tableWrap.className = "table-card daily-sheet-table";
+
+  const table = document.createElement("table");
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>Category</th>
+        <th>Kgs</th>
+        <th>Amount</th>
+        <th>Avg Rate</th>
+        <th>Kg Share</th>
+        <th>Sale Share</th>
+      </tr>
+    </thead>
+  `;
+
+  const body = document.createElement("tbody");
+  rows.forEach(row => {
+    const tr = document.createElement("tr");
+    appendDailyCell(tr, row.category || "", "analysis-text");
+    appendDailyCell(tr, formatNumber(row.weight));
+    appendDailyCell(tr, formatMoneyCompact(row.amount));
+    appendDailyCell(tr, formatNumber(row.avg_rate));
+    appendDailyCell(tr, `${formatNumber(row.weight_share)}%`);
+    appendDailyCell(tr, `${formatNumber(row.amount_share)}%`);
+    body.appendChild(tr);
+  });
+
+  table.appendChild(body);
+  tableWrap.appendChild(table);
+  wrapper.appendChild(tableWrap);
+  return wrapper;
+}
+
+function createItemPerformanceSection(title, rows) {
+  if (!rows.length) return null;
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "daily-sheet-section";
+
+  const heading = document.createElement("h3");
+  heading.innerText = title;
+  wrapper.appendChild(heading);
+
+  const tableWrap = document.createElement("div");
+  tableWrap.className = "table-card daily-sheet-table";
+
+  const table = document.createElement("table");
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>Hen Type</th>
+        <th>Buy Kg</th>
+        <th>Sale Kg</th>
+        <th>Buy Rate</th>
+        <th>Sale Rate</th>
+        <th>Spread</th>
+        <th>Est. Profit</th>
+      </tr>
+    </thead>
+  `;
+
+  const body = document.createElement("tbody");
+  rows.forEach(row => {
+    const tr = document.createElement("tr");
+    appendDailyCell(tr, row.item || "", "analysis-text");
+    appendDailyCell(tr, formatNumber(row.purchase_kg));
+    appendDailyCell(tr, formatNumber(row.sales_kg));
+    appendDailyCell(tr, formatNumber(row.buy_rate));
+    appendDailyCell(tr, formatNumber(row.sell_rate));
+    appendDailyCell(tr, formatNumber(row.spread));
+    appendDailyCell(tr, formatMoneyCompact(row.gross_profit));
     body.appendChild(tr);
   });
 

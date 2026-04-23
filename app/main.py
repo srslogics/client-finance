@@ -508,6 +508,18 @@ def format_rate_analysis_row(label, avg_rate=0, weight=0, amount=0, category=Non
     return row
 
 
+def format_performance_row(item, purchase_kg=0, sales_kg=0, buy_rate=0, sell_rate=0, spread=0, gross_profit=0):
+    return {
+        "item": item,
+        "purchase_kg": float(purchase_kg or 0),
+        "sales_kg": float(sales_kg or 0),
+        "buy_rate": float(buy_rate or 0),
+        "sell_rate": float(sell_rate or 0),
+        "spread": float(spread or 0),
+        "gross_profit": float(gross_profit or 0)
+    }
+
+
 def parse_decimal(value, default="0"):
     if value in [None, ""]:
         return Decimal(default)
@@ -2822,6 +2834,7 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
         retail_credit_outstanding += bill_outstanding
 
     purchase_rate_rows = []
+    purchase_by_item = {}
     purchase_rate_query = db.query(
         models.Transaction.item_type.label("item_type"),
         func.sum(models.Transaction.weight).label("weight"),
@@ -2838,11 +2851,18 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
     for row in purchase_rate_query:
         weight = Decimal(row.weight or 0)
         amount = Decimal(row.amount or 0)
+        avg_rate = decimal_ratio(amount, weight)
         purchase_rate_rows.append(
-            format_rate_analysis_row(row.item_type, decimal_ratio(amount, weight), weight, amount)
+            format_rate_analysis_row(row.item_type, avg_rate, weight, amount)
         )
+        purchase_by_item[row.item_type] = {
+            "weight": weight,
+            "amount": amount,
+            "avg_rate": avg_rate
+        }
 
     category_rate_rows = []
+    category_mix_rows = []
     category_rate_query = db.query(
         models.Transaction.category.label("category"),
         func.sum(models.Transaction.weight).label("weight"),
@@ -2858,9 +2878,20 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
     for row in category_rate_query:
         weight = Decimal(row.weight or 0)
         amount = Decimal(row.amount or 0)
+        avg_rate = decimal_ratio(amount, weight)
+        weight_share = (weight / total_sales_weight * Decimal("100")) if total_sales_weight > 0 else Decimal("0")
+        amount_share = (amount / total_sales_amount * Decimal("100")) if total_sales_amount > 0 else Decimal("0")
         category_rate_rows.append(
-            format_rate_analysis_row(row.category or "OTHER", decimal_ratio(amount, weight), weight, amount, category=row.category or "OTHER")
+            format_rate_analysis_row(row.category or "OTHER", avg_rate, weight, amount, category=row.category or "OTHER")
         )
+        category_mix_rows.append({
+            "category": row.category or "OTHER",
+            "weight": float(weight),
+            "amount": float(amount),
+            "avg_rate": float(avg_rate),
+            "weight_share": float(weight_share),
+            "amount_share": float(amount_share)
+        })
 
     category_item_rate_rows = []
     category_item_rate_query = db.query(
@@ -2893,10 +2924,57 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
             )
         )
 
+    sales_by_item_rows = db.query(
+        models.Transaction.item_type.label("item_type"),
+        func.sum(models.Transaction.weight).label("weight"),
+        func.sum(models.Transaction.amount).label("amount")
+    ).filter(
+        models.Transaction.date == target_date,
+        models.Transaction.type == "SALE",
+        models.Transaction.item_type.isnot(None)
+    ).group_by(
+        models.Transaction.item_type
+    ).order_by(
+        models.Transaction.item_type.asc()
+    ).all()
+
+    sales_by_item = {}
+    for row in sales_by_item_rows:
+        weight = Decimal(row.weight or 0)
+        amount = Decimal(row.amount or 0)
+        sales_by_item[row.item_type] = {
+            "weight": weight,
+            "amount": amount,
+            "avg_rate": decimal_ratio(amount, weight)
+        }
+
+    item_performance_rows = []
+    for item in sorted(set(purchase_by_item.keys()) | set(sales_by_item.keys())):
+        purchase_info = purchase_by_item.get(item, {"weight": Decimal("0"), "amount": Decimal("0"), "avg_rate": Decimal("0")})
+        sales_info = sales_by_item.get(item, {"weight": Decimal("0"), "amount": Decimal("0"), "avg_rate": Decimal("0")})
+        spread = sales_info["avg_rate"] - purchase_info["avg_rate"]
+        comparable_weight = sales_info["weight"] if sales_info["weight"] > 0 else Decimal("0")
+        estimated_profit = spread * comparable_weight
+        item_performance_rows.append(format_performance_row(
+            item,
+            purchase_info["weight"],
+            sales_info["weight"],
+            purchase_info["avg_rate"],
+            sales_info["avg_rate"],
+            spread,
+            estimated_profit
+        ))
+
     total_purchase_rate_value = decimal_ratio(purchase_total_amount, purchase_total_weight)
     total_sales_rate_value = decimal_ratio(total_sales_amount, total_sales_weight)
     dressed_sales_weight = sum(Decimal(str(row["total"]["weight"])) for row in ordered_sales_sections if row["title"].upper() == "RETAIL DRESSED")
     dressed_sales_amount = sum(Decimal(str(row["total"]["total"])) for row in ordered_sales_sections if row["title"].upper() == "RETAIL DRESSED")
+    sell_through = (total_sales_weight / (opening_total_weight + purchase_total_weight) * Decimal("100")) if (opening_total_weight + purchase_total_weight) > 0 else Decimal("0")
+    leakage_percent = (short_weight / closing_weight * Decimal("100")) if closing_weight > 0 else Decimal("0")
+    realized_spread = total_sales_rate_value - total_purchase_rate_value
+    retail_total_amount = sum(Decimal(str(section["total"]["total"])) for section in ordered_sales_sections if section["title"].upper() in ["RETAIL", "RETAIL DRESSED"])
+    retail_mix_percent = (retail_total_amount / total_sales_amount * Decimal("100")) if total_sales_amount > 0 else Decimal("0")
+    stock_coverage_days = (closing_weight / total_sales_weight) if total_sales_weight > 0 else Decimal("0")
 
     return {
         "date": str(target_date),
@@ -2937,6 +3015,10 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
             "sales_by_category": category_rate_rows,
             "sales_by_hen_type_category": category_item_rate_rows
         },
+        "business_controls": {
+            "category_mix": category_mix_rows,
+            "item_performance": item_performance_rows
+        },
         "metric_cards": [
             {
                 "label": "Avg Buy Rate",
@@ -2958,6 +3040,31 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
                 "value": float(dressed_sales_amount),
                 "prefix": "Rs ",
                 "subvalue": f"{float(dressed_sales_weight):.3f} kg"
+            },
+            {
+                "label": "Sell Through",
+                "value": float(sell_through),
+                "suffix": "%"
+            },
+            {
+                "label": "Leakage %",
+                "value": float(leakage_percent),
+                "suffix": "%"
+            },
+            {
+                "label": "Sale vs Buy Spread",
+                "value": float(realized_spread),
+                "suffix": "/kg"
+            },
+            {
+                "label": "Retail Mix",
+                "value": float(retail_mix_percent),
+                "suffix": "%"
+            },
+            {
+                "label": "Stock Cover",
+                "value": float(stock_coverage_days),
+                "suffix": " day"
             }
         ],
         "special_sections": {
