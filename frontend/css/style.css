@@ -545,6 +545,12 @@ input[type="file"] {
   gap: 12px;
 }
 
+#retailPaidAmount:disabled {
+  background: #f4f7f6;
+  color: #7b8694;
+  cursor: not-allowed;
+}
+
 .retail-layout .section,
 .retail-form-grid,
 .retail-item-row,
@@ -753,7 +759,9 @@ input[type="file"] {
 }
 
 .thermal-items-table {
-  width: 100%;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100%;
   margin-top: 12px;
   table-layout: fixed;
   border-collapse: collapse;

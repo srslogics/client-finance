@@ -35,6 +35,7 @@ function initRetailPage() {
   const formIds = [
     "retailBillNumber",
     "retailCashier",
+    "retailSettlementType",
     "retailPaymentMode",
     "retailCustomerName",
     "retailCustomerPhone",
@@ -50,10 +51,16 @@ function initRetailPage() {
     input.addEventListener("change", markRetailDraftDirty);
   });
 
+  const settlementType = document.getElementById("retailSettlementType");
+  if (settlementType) {
+    settlementType.addEventListener("change", handleRetailSettlementTypeChange);
+  }
+
   attachRetailConnectivityListeners();
   addRetailItemRow();
   renderRetailShortcuts();
   renderRetailOfflineBanner();
+  syncRetailSettlementUi();
   refreshRetailBillNumber();
   renderRetailPreviewFromForm();
   loadRetailBills();
@@ -231,11 +238,19 @@ function buildRetailBillFromForm() {
   const totalNag = items.reduce((sum, item) => sum + Number(item.nag || item.quantity || 0), 0);
   const totalWeight = items.reduce((sum, item) => sum + Number(item.weight || (item.unit === "KGS" ? item.nag || item.quantity : 0) || 0), 0);
   const paymentMode = document.getElementById("retailPaymentMode")?.value || "Cash";
+  const settlementType = document.getElementById("retailSettlementType")?.value || "paid";
   const rawPaidAmount = document.getElementById("retailPaidAmount")?.value;
-  const paidAmount = Math.min(
+  let paidAmount = Math.min(
     rawPaidAmount === "" && paymentMode !== "Credit" ? totalAmount : Number(rawPaidAmount || 0),
     totalAmount
   );
+
+  if (settlementType === "paid") {
+    paidAmount = totalAmount;
+  } else if (settlementType === "credit") {
+    paidAmount = 0;
+  }
+
   const outstandingAmount = Math.max(totalAmount - paidAmount, 0);
 
   return {
@@ -246,6 +261,7 @@ function buildRetailBillFromForm() {
     customer_name: document.getElementById("retailCustomerName")?.value.trim() || "",
     customer_phone: document.getElementById("retailCustomerPhone")?.value.trim() || "",
     customer_address: document.getElementById("retailCustomerAddress")?.value.trim() || "",
+    settlement_type: settlementType,
     payment_mode: paymentMode,
     paid_amount: paidAmount,
     outstanding_amount: outstandingAmount,
@@ -275,6 +291,37 @@ function markRetailDraftDirty() {
   renderRetailPreviewFromForm();
 }
 
+function handleRetailSettlementTypeChange() {
+  syncRetailSettlementUi();
+  markRetailDraftDirty();
+}
+
+function syncRetailSettlementUi() {
+  const settlementType = document.getElementById("retailSettlementType");
+  const paymentMode = document.getElementById("retailPaymentMode");
+  const paidAmount = document.getElementById("retailPaidAmount");
+
+  if (!settlementType || !paymentMode || !paidAmount) return;
+
+  const mode = settlementType.value || "paid";
+
+  if (mode === "credit") {
+    paymentMode.value = "Credit";
+    paidAmount.value = "0";
+    paidAmount.disabled = true;
+    paidAmount.placeholder = "Paid amount (0 for credit)";
+  } else if (mode === "paid") {
+    if (paymentMode.value === "Credit") paymentMode.value = "Cash";
+    paidAmount.disabled = true;
+    paidAmount.value = "";
+    paidAmount.placeholder = "Paid automatically as full bill";
+  } else {
+    if (paymentMode.value === "Credit") paymentMode.value = "Cash";
+    paidAmount.disabled = false;
+    paidAmount.placeholder = "Paid amount";
+  }
+}
+
 function populateRetailFormFromBill(bill) {
   const rows = document.getElementById("retailItemRows");
   if (!rows || !bill) return;
@@ -282,12 +329,22 @@ function populateRetailFormFromBill(bill) {
   document.getElementById("retailDate").value = bill.date || formatDateInput(new Date());
   document.getElementById("retailBillNumber").value = bill.bill_number || "";
   document.getElementById("retailCashier").value = bill.cashier_name || "admin";
+  const totalAmount = Number(bill.total_amount || 0);
+  const paidAmount = Number(bill.paid_amount || 0);
+  let settlementType = "partial";
+  if (paidAmount <= 0) settlementType = "credit";
+  else if (paidAmount >= totalAmount) settlementType = "paid";
+  document.getElementById("retailSettlementType").value = settlementType;
   document.getElementById("retailPaymentMode").value = bill.payment_mode || "Cash";
   document.getElementById("retailCustomerName").value = bill.customer_name || "";
   document.getElementById("retailCustomerPhone").value = bill.customer_phone || "";
   document.getElementById("retailCustomerAddress").value = bill.customer_address || "";
   document.getElementById("retailPaidAmount").value = bill.paid_amount ?? "";
   document.getElementById("retailNotes").value = bill.notes || "";
+  syncRetailSettlementUi();
+  if (settlementType === "partial") {
+    document.getElementById("retailPaidAmount").value = bill.paid_amount ?? "";
+  }
 
   rows.innerHTML = "";
   (bill.items || []).forEach(item => addRetailItemRow(item));
@@ -545,13 +602,18 @@ async function printCurrentRetailBill() {
           body { margin: 0; font-family: Arial, sans-serif; background: white; }
           .bill { width: 80mm; margin: 0 auto; padding: 8px 10px 14px; color: #111; }
           .thermal-center { text-align: center; }
-          .thermal-label, .thermal-badge { font-size: 11px; letter-spacing: 1.5px; margin-bottom: 4px; text-transform: uppercase; }
+          .thermal-label { font-size: 11px; letter-spacing: 1.5px; margin-bottom: 4px; text-transform: uppercase; }
           h3 { margin: 0; font-size: 24px; }
           p { margin: 2px 0; font-size: 12px; }
           .thermal-meta, .thermal-summary, .thermal-customer, .thermal-footer, .thermal-notes { margin-top: 10px; border-top: 1px dashed #555; padding-top: 8px; }
           .thermal-meta div, .thermal-summary p { display: flex; justify-content: space-between; gap: 10px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
-          th, td { padding: 4px 0; text-align: left; vertical-align: top; }
+          table { width: 100%; min-width: 0; max-width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
+          th, td { padding: 4px 0; text-align: left; vertical-align: top; white-space: normal; overflow-wrap: anywhere; }
+          th:nth-child(1), td:nth-child(1) { width: 9%; }
+          th:nth-child(2), td:nth-child(2) { width: 39%; }
+          th:nth-child(3), td:nth-child(3) { width: 16%; }
+          th:nth-child(4), td:nth-child(4) { width: 16%; }
+          th:nth-child(5), td:nth-child(5) { width: 20%; }
           th:last-child, td:last-child, th:nth-last-child(2), td:nth-last-child(2), th:nth-last-child(3), td:nth-last-child(3) { text-align: right; }
           .thermal-total { border-top: 1px dashed #555; margin-top: 6px; padding-top: 6px; font-weight: 700; }
           .thermal-footer { text-align: center; margin-top: 14px; }
@@ -590,8 +652,10 @@ function resetRetailForm() {
   document.getElementById("retailCustomerAddress").value = "";
   document.getElementById("retailPaidAmount").value = "";
   document.getElementById("retailNotes").value = "";
+  document.getElementById("retailSettlementType").value = "paid";
   document.getElementById("retailPaymentMode").value = "Cash";
   document.getElementById("retailCashier").value = "admin";
+  syncRetailSettlementUi();
 
   addRetailItemRow();
   currentRetailBill = null;
