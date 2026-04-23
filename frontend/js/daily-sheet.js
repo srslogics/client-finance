@@ -179,6 +179,22 @@ function createBalanceSheetSection(title, rows, totals) {
   heading.innerText = title;
   wrapper.appendChild(heading);
 
+  const metrics = buildBalanceMetrics(rows || [], totals);
+  wrapper.appendChild(createMetricCardStrip(metrics.cards));
+
+  const controls = document.createElement("div");
+  controls.className = "balance-filter-bar";
+  controls.innerHTML = `
+    <input type="text" class="balance-search" placeholder="Search party name">
+    <div class="balance-chip-group">
+      <button type="button" class="balance-filter-chip active" data-filter="all">All Parties</button>
+      <button type="button" class="balance-filter-chip" data-filter="active">Active Today</button>
+      <button type="button" class="balance-filter-chip" data-filter="unpaid">Unpaid Today</button>
+      <button type="button" class="balance-filter-chip" data-filter="high">High Balance</button>
+    </div>
+  `;
+  wrapper.appendChild(controls);
+
   const tableWrap = document.createElement("div");
   tableWrap.className = "table-card daily-sheet-table";
 
@@ -196,17 +212,51 @@ function createBalanceSheetSection(title, rows, totals) {
   `;
 
   const body = document.createElement("tbody");
-  (rows || []).forEach(row => body.appendChild(createBalanceRow(row)));
-  if (totals) body.appendChild(createBalanceRow(totals, true));
   table.appendChild(body);
   tableWrap.appendChild(table);
   wrapper.appendChild(tableWrap);
+
+  let currentFilter = "all";
+  let currentQuery = "";
+
+  function renderBalanceRows() {
+    body.innerHTML = "";
+    const filteredRows = filterBalanceRows(rows || [], currentFilter, currentQuery, metrics.highBalanceThreshold);
+    filteredRows.forEach(row => body.appendChild(createBalanceRow(row, false, metrics.highBalanceThreshold)));
+    if (totals) body.appendChild(createBalanceRow(totals, true));
+  }
+
+  controls.querySelectorAll(".balance-filter-chip").forEach(button => {
+    button.addEventListener("click", () => {
+      currentFilter = button.dataset.filter || "all";
+      controls.querySelectorAll(".balance-filter-chip").forEach(chip => chip.classList.remove("active"));
+      button.classList.add("active");
+      renderBalanceRows();
+    });
+  });
+
+  controls.querySelector(".balance-search")?.addEventListener("input", (event) => {
+    currentQuery = event.target.value || "";
+    renderBalanceRows();
+  });
+
+  renderBalanceRows();
   return wrapper;
 }
 
-function createBalanceRow(row, isTotal = false) {
+function createBalanceRow(row, isTotal = false, highBalanceThreshold = 50000) {
   const tr = document.createElement("tr");
-  if (isTotal) tr.className = "sheet-total-row";
+  if (isTotal) {
+    tr.className = "sheet-total-row";
+  } else {
+    const balance = Number(row.balance || 0);
+    const purchases = Number(row.purchases || 0);
+    const payment = Number(row.payment || 0);
+    if (purchases > 0 || payment > 0) tr.classList.add("balance-row-active");
+    if (purchases > 0 && payment === 0) tr.classList.add("balance-row-unpaid");
+    if (balance < 0) tr.classList.add("balance-row-advance");
+    if (balance >= highBalanceThreshold) tr.classList.add("balance-row-high");
+  }
 
   appendDailyCell(tr, row.party_name || "");
   appendDailyCell(tr, formatMoneyCompact(row.old_balance));
@@ -214,6 +264,79 @@ function createBalanceRow(row, isTotal = false) {
   appendDailyCell(tr, formatMoneyCompact(row.payment));
   appendDailyCell(tr, formatMoneyCompact(row.balance));
   return tr;
+}
+
+function buildBalanceMetrics(rows, totals) {
+  const activeRows = rows.filter(row => Number(row.purchases || 0) > 0 || Number(row.payment || 0) > 0);
+  const unpaidRows = rows.filter(row => Number(row.purchases || 0) > 0 && Number(row.payment || 0) === 0);
+  const highBalanceThreshold = getHighBalanceThreshold(rows);
+  const highBalanceRows = rows.filter(row => Number(row.balance || 0) >= highBalanceThreshold);
+
+  return {
+    highBalanceThreshold,
+    cards: [
+    {
+      label: "Old Balance",
+      value: Number(totals?.old_balance || 0),
+      prefix: "Rs "
+    },
+    {
+      label: "Today Business",
+      value: Number(totals?.purchases || 0),
+      prefix: "Rs "
+    },
+    {
+      label: "Today Payment",
+      value: Number(totals?.payment || 0),
+      prefix: "Rs "
+    },
+    {
+      label: "Closing Balance",
+      value: Number(totals?.balance || 0),
+      prefix: "Rs "
+    },
+    {
+      label: "Active Parties",
+      value: activeRows.length
+    },
+    {
+      label: "Unpaid Today",
+      value: unpaidRows.length
+    },
+    {
+      label: "High Balance",
+      value: highBalanceRows.length,
+      subvalue: `Rs ${formatMoneyCompact(highBalanceThreshold)}+`
+    }
+    ]
+  };
+}
+
+function getHighBalanceThreshold(rows) {
+  const balances = rows
+    .map(row => Number(row.balance || 0))
+    .filter(value => value > 0)
+    .sort((a, b) => b - a);
+
+  if (!balances.length) return 50000;
+  return Math.max(50000, balances[Math.min(4, balances.length - 1)]);
+}
+
+function filterBalanceRows(rows, filter, query, highBalanceThreshold) {
+  const normalizedQuery = (query || "").trim().toLowerCase();
+
+  return rows.filter(row => {
+    const partyName = String(row.party_name || "").toLowerCase();
+    const purchases = Number(row.purchases || 0);
+    const payment = Number(row.payment || 0);
+    const balance = Number(row.balance || 0);
+
+    if (normalizedQuery && !partyName.includes(normalizedQuery)) return false;
+    if (filter === "active") return purchases > 0 || payment > 0;
+    if (filter === "unpaid") return purchases > 0 && payment === 0;
+    if (filter === "high") return balance >= highBalanceThreshold;
+    return true;
+  });
 }
 
 function createRetailCreditSection(title, rows, totals) {
