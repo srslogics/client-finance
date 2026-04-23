@@ -158,6 +158,16 @@ function loadPage(page) {
         const processDate = document.getElementById("processDate");
         if (uploadWorkingDate) uploadWorkingDate.value = formatDateInput(new Date());
         if (processDate) processDate.value = formatDateInput(new Date());
+        if (uploadWorkingDate && processDate) {
+          uploadWorkingDate.addEventListener("change", () => {
+            if (!processDate.dataset.touched || processDate.dataset.touched === "false") {
+              processDate.value = uploadWorkingDate.value;
+            }
+          });
+          processDate.addEventListener("change", () => {
+            processDate.dataset.touched = "true";
+          });
+        }
       }, 100);
     }
 

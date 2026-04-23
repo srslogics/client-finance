@@ -921,6 +921,46 @@ input[type="file"] {
   }
 }
 
+@media print {
+  body {
+    background: #fff;
+  }
+
+  .sidebar,
+  .topbar,
+  #toast,
+  #globalLoader,
+  .toolbar,
+  .report-actions,
+  .retail-actions,
+  .retail-item-actions,
+  .section-head button,
+  nav.menu,
+  .page-intro {
+    display: none !important;
+  }
+
+  .app,
+  .main,
+  #content,
+  .container,
+  .section,
+  .card,
+  .daily-sheet-card {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #fff !important;
+  }
+
+  table {
+    min-width: 0 !important;
+  }
+}
+
 .stock-rows {
   display: grid;
   gap: 12px;

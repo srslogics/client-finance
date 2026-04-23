@@ -29,7 +29,7 @@ async function loadAnalytics() {
     trend: `/analytics/trend?start_date=${start}&end_date=${end}`,
     summary: `/analytics/summary?start_date=${start}&end_date=${end}`,
     leakage: `/analytics/leakage?start_date=${start}&end_date=${end}`,
-    debtors: "/top-debtors",
+    debtors: `/top-debtors?start_date=${start}&end_date=${end}`,
     profitByItem: `/analytics/profit-by-item?start_date=${start}&end_date=${end}`,
     itemVolume: `/analytics/item-volume?start_date=${start}&end_date=${end}`,
     paymentModes: `/analytics/payment-modes?start_date=${start}&end_date=${end}`

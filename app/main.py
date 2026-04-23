@@ -438,6 +438,23 @@ def latest_item_rates(db: Session, target_date):
     return rates
 
 
+def stock_item_names_query(db: Session):
+    sale_purchase_items = db.query(models.Transaction.item_type).filter(
+        models.Transaction.item_type.isnot(None),
+        models.Transaction.type.in_(["PURCHASE", "SALE"])
+    ).distinct().all()
+    opening_items = db.query(models.ItemOpeningStock.item_type).distinct().all()
+
+    items = set()
+    for row in sale_purchase_items:
+        if row.item_type:
+            items.add(row.item_type)
+    for row in opening_items:
+        if row.item_type:
+            items.add(row.item_type)
+    return items
+
+
 def format_sheet_row(label, weight=0, rate=0, amount=0, nag=None):
     return {
         "goods": label,
@@ -1864,13 +1881,7 @@ def export_report(
             return {"error": "Invalid date format"}
 
         rows = []
-        items = set()
-        for row in db.query(models.Transaction.item_type).filter(models.Transaction.item_type.isnot(None)).distinct().all():
-            if row.item_type:
-                items.add(row.item_type)
-        for row in db.query(models.ItemOpeningStock.item_type).distinct().all():
-            if row.item_type:
-                items.add(row.item_type)
+        items = stock_item_names_query(db)
 
         for item in sorted(items):
             processed = db.query(models.DailyItemStock).filter_by(
@@ -1926,7 +1937,7 @@ def export_report(
         return report_response(rows, columns, f"inventory_{target}", file_format, f"Inventory Report - {target}")
 
     if report_type == "transactions":
-        query = db.query(models.Transaction, models.Party).join(
+        query = db.query(models.Transaction, models.Party).outerjoin(
             models.Party,
             models.Transaction.party_id == models.Party.id
         )
@@ -1946,8 +1957,8 @@ def export_report(
         for txn, party_row in query.order_by(models.Transaction.date.asc()).all():
             rows.append({
                 "Date": str(txn.date),
-                "Party": party_row.name,
-                "Party Type": party_row.type or "",
+                "Party": party_row.name if party_row else (txn.category.title() if txn.category else "Walk-in Customer"),
+                "Party Type": party_row.type if party_row else ("RETAIL" if txn.type == "SALE" else ""),
                 "Type": txn.type or "",
                 "Category": txn.category or "",
                 "Item": txn.item_type or "",
@@ -2039,15 +2050,27 @@ def get_dashboard(date: str, db: Session = Depends(get_db)):
 
 
 @app.get("/top-debtors")
-def top_debtors(db: Session = Depends(get_db)):
+def top_debtors(start_date: str | None = None, end_date: str | None = None, db: Session = Depends(get_db)):
+    start = parse_input_date(start_date) if start_date else None
+    end = parse_input_date(end_date) if end_date else None
+    if (start_date and not start) or (end_date and not end):
+        return {"error": "Invalid date format"}
+
     balance_expr = func.sum(receivable_case())
-    rows = db.query(
+    query = db.query(
         models.Party.name,
         balance_expr.label("balance")
     ).join(
         models.Transaction,
         models.Transaction.party_id == models.Party.id
-    ).group_by(
+    )
+
+    if start:
+        query = query.filter(models.Transaction.date >= start)
+    if end:
+        query = query.filter(models.Transaction.date <= end)
+
+    rows = query.group_by(
         models.Party.id,
         models.Party.name
     ).having(
@@ -2933,13 +2956,7 @@ def inventory_by_item(date: str, db: Session = Depends(get_db)):
     if not target_date:
         return {"error": "Invalid date format"}
 
-    items = set()
-    for row in db.query(models.Transaction.item_type).filter(models.Transaction.item_type.isnot(None)).distinct().all():
-        if row.item_type:
-            items.add(row.item_type)
-    for row in db.query(models.ItemOpeningStock.item_type).distinct().all():
-        if row.item_type:
-            items.add(row.item_type)
+    items = stock_item_names_query(db)
 
     result = []
     processed_by_item = {
@@ -2963,7 +2980,8 @@ def inventory_by_item(date: str, db: Session = Depends(get_db)):
     txns_by_item = {}
     txns = db.query(models.Transaction).filter(
         models.Transaction.date <= target_date,
-        models.Transaction.item_type.isnot(None)
+        models.Transaction.item_type.isnot(None),
+        models.Transaction.type.in_(["PURCHASE", "SALE"])
     ).all()
 
     for txn in txns:
@@ -3017,15 +3035,7 @@ def inventory_by_item(date: str, db: Session = Depends(get_db)):
 @app.get("/items/search")
 def search_items(q: str = "", db: Session = Depends(get_db)):
     normalized_query = q.strip().lower()
-    items = set()
-
-    for row in db.query(models.Transaction.item_type).filter(models.Transaction.item_type.isnot(None)).distinct().all():
-        if row.item_type:
-            items.add(row.item_type)
-
-    for row in db.query(models.ItemOpeningStock.item_type).distinct().all():
-        if row.item_type:
-            items.add(row.item_type)
+    items = stock_item_names_query(db)
 
     results = sorted(
         item for item in items
