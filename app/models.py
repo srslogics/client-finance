@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Date, Numeric, ForeignKey, TIMESTAMP, UniqueConstraint
+from sqlalchemy import Column, String, Date, Numeric, ForeignKey, TIMESTAMP, UniqueConstraint, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from app.db import Base
@@ -38,10 +38,11 @@ class Transaction(Base):
     rate = Column(Numeric)
     amount = Column(Numeric)
     payment_mode = Column(String)
+    source_ref = Column(String, nullable=False, default="", server_default="")
     created_at = Column(TIMESTAMP, server_default=func.now())
 
     __table_args__ = (
-        UniqueConstraint("date", "party_id", "weight", "rate", "type", "category", "item_type", name="unique_txn"),
+        UniqueConstraint("date", "party_id", "weight", "rate", "type", "category", "item_type", "source_ref", name="unique_txn"),
     )
 
 
@@ -98,3 +99,43 @@ class DailyItemStock(Base):
     __table_args__ = (
         UniqueConstraint("date", "item_type", name="unique_daily_item_stock"),
     )
+
+
+class RetailBill(Base):
+    __tablename__ = "retail_bills"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    bill_number = Column(String, nullable=False)
+    date = Column(Date, nullable=False)
+    party_id = Column(UUID(as_uuid=True), ForeignKey("parties.id"))
+    customer_name = Column(String)
+    customer_phone = Column(String)
+    customer_address = Column(String)
+    cashier_name = Column(String)
+    payment_mode = Column(String)
+    total_quantity = Column(Numeric)
+    total_weight = Column(Numeric)
+    total_amount = Column(Numeric)
+    paid_amount = Column(Numeric)
+    outstanding_amount = Column(Numeric)
+    notes = Column(String)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("date", "bill_number", name="unique_retail_bill_number_per_day"),
+    )
+
+
+class RetailBillItem(Base):
+    __tablename__ = "retail_bill_items"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    bill_id = Column(UUID(as_uuid=True), ForeignKey("retail_bills.id"), nullable=False)
+    line_order = Column(Integer, nullable=False, default=1)
+    item_name = Column(String, nullable=False)
+    quantity = Column(Numeric)
+    unit = Column(String)
+    weight = Column(Numeric)
+    rate = Column(Numeric)
+    amount = Column(Numeric)
+    created_at = Column(TIMESTAMP, server_default=func.now())

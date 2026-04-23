@@ -308,6 +308,112 @@ function loadPage(page) {
       `;
     }
 
+    // --- Retail Billing Page
+    else if (page === "retail") {
+      title.innerText = "Retail Billing";
+
+      content.innerHTML = `
+        <div class="container">
+
+          <div class="page-intro">
+            <span>Counter Billing</span>
+            <h2>Create retail bills, print thermal receipts, and push sales into the daily sheet</h2>
+          </div>
+
+          <div class="retail-layout">
+            <div class="section">
+              <div class="section-head">
+                <div>
+                  <span>New Bill</span>
+                  <h2>Retail Invoice</h2>
+                </div>
+                <button type="button" onclick="resetRetailForm()">New Bill</button>
+              </div>
+
+              <div class="retail-form-grid">
+                <input type="date" id="retailDate" aria-label="Retail bill date">
+                <input type="text" id="retailBillNumber" placeholder="Bill no">
+                <input type="text" id="retailCashier" placeholder="Cashier name" value="admin">
+                <select id="retailPaymentMode">
+                  <option value="Cash">Cash</option>
+                  <option value="Online">Online</option>
+                  <option value="Bank">Bank</option>
+                  <option value="Credit">Credit</option>
+                </select>
+                <input type="text" id="retailCustomerName" placeholder="Customer name (optional)" list="retailCustomerSuggestions" autocomplete="off" oninput="suggestRetailCustomers()">
+                <datalist id="retailCustomerSuggestions"></datalist>
+                <input type="text" id="retailCustomerPhone" placeholder="Phone (optional)">
+                <input type="text" id="retailCustomerAddress" placeholder="Address (optional)">
+              </div>
+
+              <div id="retailItemRows" class="retail-items"></div>
+
+              <datalist id="retailItemSuggestions"></datalist>
+
+              <div class="retail-item-actions">
+                <button type="button" onclick="addRetailItemRow()">Add Item</button>
+              </div>
+
+              <div class="retail-form-grid retail-notes-grid">
+                <input type="number" id="retailPaidAmount" placeholder="Paid amount" min="0" step="0.01">
+                <textarea id="retailNotes" placeholder="Notes for bill or customer"></textarea>
+              </div>
+
+              <div class="report-actions retail-actions">
+                <button type="button" onclick="saveRetailBill()">Save Bill</button>
+                <button type="button" onclick="printCurrentRetailBill()">Print Latest Bill</button>
+              </div>
+            </div>
+
+            <div class="section retail-preview-panel">
+              <div class="section-head">
+                <div>
+                  <span>Print Preview</span>
+                  <h2>Thermal Receipt</h2>
+                </div>
+              </div>
+              <div id="retailPreview" class="thermal-preview"></div>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-head">
+              <div>
+                <span>Saved Bills</span>
+                <h2>Recent Retail Bills</h2>
+              </div>
+              <button type="button" onclick="loadRetailBills()">Refresh</button>
+            </div>
+
+            <div class="card table-card">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Bill No</th>
+                    <th>Date</th>
+                    <th>Customer</th>
+                    <th>Mode</th>
+                    <th>Total</th>
+                    <th>Paid</th>
+                    <th>Outstanding</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="retailBillsBody">
+                  <tr><td colspan="8" class="empty">No retail bills yet</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      `;
+
+      setTimeout(() => {
+        if (typeof initRetailPage === "function") initRetailPage();
+      }, 100);
+    }
+
     // --- Daily Sheet Page
     else if (page === "daily-sheet") {
       title.innerText = "Daily Sheet";

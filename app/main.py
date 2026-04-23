@@ -1,10 +1,11 @@
-from uuid import UUID
+from uuid import UUID, uuid4
 from io import BytesIO
 from urllib.parse import quote
+from datetime import datetime
 
 from fastapi import FastAPI
 from app.db import engine, Base
-from fastapi import UploadFile, File, Depends
+from fastapi import UploadFile, File, Depends, Body
 import pandas as pd
 from sqlalchemy.orm import Session
 from app.db import SessionLocal
@@ -24,11 +25,30 @@ Base.metadata.create_all(bind=engine)
 def ensure_database_schema():
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS item_type VARCHAR"))
+        conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS source_ref VARCHAR NOT NULL DEFAULT ''"))
+        conn.execute(text("UPDATE transactions SET source_ref = '' WHERE source_ref IS NULL"))
+        conn.execute(text("ALTER TABLE transactions DROP CONSTRAINT IF EXISTS unique_txn"))
+        conn.execute(text("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM pg_constraint
+                    WHERE conname = 'unique_txn'
+                ) THEN
+                    ALTER TABLE transactions
+                    ADD CONSTRAINT unique_txn UNIQUE (date, party_id, weight, rate, type, category, item_type, source_ref);
+                END IF;
+            END
+            $$;
+        """))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_transactions_date_type ON transactions (date, type)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_transactions_party_date ON transactions (party_id, date)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_transactions_item_date ON transactions (item_type, date)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_party_alias_normalized ON party_aliases (normalized_alias)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_daily_stock_date ON daily_stock (date)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_retail_bills_date ON retail_bills (date)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_retail_bill_items_bill_id ON retail_bill_items (bill_id)"))
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS item_opening_stock (
                 id UUID PRIMARY KEY,
@@ -52,6 +72,41 @@ def ensure_database_schema():
                 leakage NUMERIC,
                 created_at TIMESTAMP DEFAULT now(),
                 CONSTRAINT unique_daily_item_stock UNIQUE (date, item_type)
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS retail_bills (
+                id UUID PRIMARY KEY,
+                bill_number VARCHAR NOT NULL,
+                date DATE NOT NULL,
+                party_id UUID REFERENCES parties(id),
+                customer_name VARCHAR,
+                customer_phone VARCHAR,
+                customer_address VARCHAR,
+                cashier_name VARCHAR,
+                payment_mode VARCHAR,
+                total_quantity NUMERIC,
+                total_weight NUMERIC,
+                total_amount NUMERIC,
+                paid_amount NUMERIC,
+                outstanding_amount NUMERIC,
+                notes VARCHAR,
+                created_at TIMESTAMP DEFAULT now(),
+                CONSTRAINT unique_retail_bill_number_per_day UNIQUE (date, bill_number)
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS retail_bill_items (
+                id UUID PRIMARY KEY,
+                bill_id UUID NOT NULL REFERENCES retail_bills(id),
+                line_order INTEGER NOT NULL DEFAULT 1,
+                item_name VARCHAR NOT NULL,
+                quantity NUMERIC,
+                unit VARCHAR,
+                weight NUMERIC,
+                rate NUMERIC,
+                amount NUMERIC,
+                created_at TIMESTAMP DEFAULT now()
             )
         """))
 
@@ -398,6 +453,61 @@ def format_balance_row(party_name, old_balance=0, purchases=0, payment=0, balanc
         "purchases": float(purchases or 0),
         "payment": float(payment or 0),
         "balance": float(balance or 0)
+    }
+
+
+def format_retail_credit_row(customer_name, bill_number, total_amount=0, paid_amount=0, outstanding_amount=0, payment_mode="Credit"):
+    return {
+        "customer_name": customer_name or "Walk-in Customer",
+        "bill_number": bill_number or "",
+        "total_amount": float(total_amount or 0),
+        "paid_amount": float(paid_amount or 0),
+        "outstanding_amount": float(outstanding_amount or 0),
+        "payment_mode": payment_mode or "Credit"
+    }
+
+
+def parse_decimal(value, default="0"):
+    if value in [None, ""]:
+        return Decimal(default)
+
+    try:
+        return Decimal(str(value).strip())
+    except Exception:
+        return Decimal(default)
+
+
+def serialize_retail_bill(bill, items):
+    created_at = bill.created_at or datetime.utcnow()
+
+    return {
+        "id": str(bill.id),
+        "bill_number": bill.bill_number,
+        "date": str(bill.date),
+        "time": created_at.strftime("%H:%M:%S"),
+        "customer_name": bill.customer_name or "",
+        "customer_phone": bill.customer_phone or "",
+        "customer_address": bill.customer_address or "",
+        "cashier_name": bill.cashier_name or "admin",
+        "payment_mode": bill.payment_mode or "Cash",
+        "total_quantity": float(bill.total_quantity or 0),
+        "total_weight": float(bill.total_weight or 0),
+        "total_amount": float(bill.total_amount or 0),
+        "paid_amount": float(bill.paid_amount or 0),
+        "outstanding_amount": float(bill.outstanding_amount or 0),
+        "notes": bill.notes or "",
+        "items": [
+            {
+                "line_order": item.line_order,
+                "item_name": item.item_name,
+                "quantity": float(item.quantity or 0),
+                "unit": item.unit or "KGS",
+                "weight": float(item.weight or 0),
+                "rate": float(item.rate or 0),
+                "amount": float(item.amount or 0)
+            }
+            for item in items
+        ]
     }
 
 
@@ -2148,6 +2258,233 @@ def payment_modes(start_date: str, end_date: str, db: Session = Depends(get_db))
     ]
 
 
+@app.get("/retail-bills/next-number")
+def next_retail_bill_number(date: str, db: Session = Depends(get_db)):
+    target_date = parse_input_date(date)
+    if not target_date:
+        return {"error": "Invalid date format"}
+
+    bill_numbers = db.query(models.RetailBill.bill_number).filter(
+        models.RetailBill.date == target_date
+    ).all()
+
+    max_number = 0
+    for row in bill_numbers:
+        digits = "".join(char for char in str(row.bill_number or "") if char.isdigit())
+        if digits:
+            max_number = max(max_number, int(digits))
+
+    return {"bill_number": str(max_number + 1)}
+
+
+@app.get("/retail-bills")
+def list_retail_bills(date: str = None, db: Session = Depends(get_db)):
+    query = db.query(models.RetailBill).order_by(
+        models.RetailBill.date.desc(),
+        models.RetailBill.created_at.desc()
+    )
+
+    if date:
+        target_date = parse_input_date(date)
+        if not target_date:
+            return {"error": "Invalid date format"}
+        query = query.filter(models.RetailBill.date == target_date)
+
+    bills = query.limit(50).all()
+
+    return {
+        "results": [
+            {
+                "id": str(bill.id),
+                "bill_number": bill.bill_number,
+                "date": str(bill.date),
+                "customer_name": bill.customer_name or "Walk-in Customer",
+                "payment_mode": bill.payment_mode or "Cash",
+                "total_amount": float(bill.total_amount or 0),
+                "paid_amount": float(bill.paid_amount or 0),
+                "outstanding_amount": float(bill.outstanding_amount or 0)
+            }
+            for bill in bills
+        ]
+    }
+
+
+@app.get("/retail-bills/{bill_id}")
+def get_retail_bill(bill_id: UUID, db: Session = Depends(get_db)):
+    bill = db.query(models.RetailBill).filter(models.RetailBill.id == bill_id).first()
+    if not bill:
+        return {"error": "Retail bill not found"}
+
+    items = db.query(models.RetailBillItem).filter(
+        models.RetailBillItem.bill_id == bill.id
+    ).order_by(models.RetailBillItem.line_order.asc()).all()
+
+    return serialize_retail_bill(bill, items)
+
+
+@app.post("/retail-bills")
+def create_retail_bill(payload: dict = Body(...), db: Session = Depends(get_db)):
+    target_date = parse_input_date(payload.get("date"))
+    if not target_date:
+        return {"error": "Invalid bill date"}
+
+    raw_items = payload.get("items") or []
+    if not raw_items:
+        return {"error": "Add at least one retail item"}
+
+    bill_number = str(payload.get("bill_number") or "").strip()
+    if not bill_number:
+        next_number = next_retail_bill_number(str(target_date), db)
+        bill_number = next_number.get("bill_number", "1")
+
+    existing = db.query(models.RetailBill).filter(
+        models.RetailBill.date == target_date,
+        models.RetailBill.bill_number == bill_number
+    ).first()
+    if existing:
+        return {"error": "Bill number already exists for this date"}
+
+    customer_name = str(payload.get("customer_name") or "").strip()
+    customer_phone = str(payload.get("customer_phone") or "").strip()
+    customer_address = str(payload.get("customer_address") or "").strip()
+    cashier_name = str(payload.get("cashier_name") or "admin").strip()
+    payment_mode = str(payload.get("payment_mode") or "Cash").strip()
+    notes = str(payload.get("notes") or "").strip()
+    raw_paid_amount = payload.get("paid_amount")
+    paid_amount = parse_decimal(raw_paid_amount)
+
+    party_id = None
+    if customer_name:
+        party_id = get_or_create_party(db, customer_name, "VENDOR", {})
+
+    normalized_items = []
+    total_quantity = Decimal("0")
+    total_weight = Decimal("0")
+    total_amount = Decimal("0")
+
+    for index, raw_item in enumerate(raw_items, start=1):
+        item_name = str(raw_item.get("item_name") or "").strip()
+        if not item_name:
+            return {"error": f"Item name missing on row {index}"}
+
+        quantity = parse_decimal(raw_item.get("quantity"))
+        rate = parse_decimal(raw_item.get("rate"))
+        unit = str(raw_item.get("unit") or "KGS").strip().upper()
+        weight = parse_decimal(raw_item.get("weight"))
+
+        if quantity <= 0:
+            return {"error": f"Quantity must be greater than 0 on row {index}"}
+
+        if unit == "KGS" and weight <= 0:
+            weight = quantity
+
+        amount = parse_decimal(raw_item.get("amount"))
+        if amount <= 0:
+            amount_base = weight if weight > 0 else quantity
+            amount = amount_base * rate
+
+        normalized_items.append({
+            "line_order": index,
+            "item_name": item_name,
+            "quantity": quantity,
+            "unit": unit,
+            "weight": weight,
+            "rate": rate,
+            "amount": amount
+        })
+
+        total_quantity += quantity
+        total_weight += weight
+        total_amount += amount
+
+    if raw_paid_amount in [None, ""] and payment_mode.strip().upper() != "CREDIT":
+        paid_amount = total_amount
+
+    if paid_amount < 0:
+        return {"error": "Paid amount cannot be negative"}
+
+    if paid_amount > total_amount:
+        paid_amount = total_amount
+
+    outstanding_amount = total_amount - paid_amount
+    if outstanding_amount > 0 and not customer_name:
+        return {"error": "Customer name is required for credit retail bills"}
+
+    if outstanding_amount > 0 and payment_mode.strip().upper() == "CASH":
+        payment_mode = "Credit"
+
+    bill = models.RetailBill(
+        id=uuid4(),
+        bill_number=bill_number,
+        date=target_date,
+        party_id=party_id,
+        customer_name=customer_name or None,
+        customer_phone=customer_phone or None,
+        customer_address=customer_address or None,
+        cashier_name=cashier_name or "admin",
+        payment_mode=payment_mode,
+        total_quantity=total_quantity,
+        total_weight=total_weight,
+        total_amount=total_amount,
+        paid_amount=paid_amount,
+        outstanding_amount=outstanding_amount,
+        notes=notes or None
+    )
+    db.add(bill)
+    db.flush()
+
+    for item in normalized_items:
+        db.add(models.RetailBillItem(
+            bill_id=bill.id,
+            line_order=item["line_order"],
+            item_name=item["item_name"],
+            quantity=item["quantity"],
+            unit=item["unit"],
+            weight=item["weight"],
+            rate=item["rate"],
+            amount=item["amount"]
+        ))
+        db.add(models.Transaction(
+            date=target_date,
+            party_id=party_id,
+            type="SALE",
+            category="RETAIL",
+            item_type=item["item_name"],
+            weight=item["weight"],
+            rate=item["rate"],
+            amount=item["amount"],
+            payment_mode=payment_mode,
+            source_ref=f"retail-bill:{bill.id}:{item['line_order']}"
+        ))
+
+    if paid_amount > 0:
+        db.add(models.Transaction(
+            date=target_date,
+            party_id=party_id,
+            type="PAYMENT",
+            category="RECEIVED",
+            item_type="Retail Bill Payment",
+            weight=0,
+            rate=0,
+            amount=paid_amount,
+            payment_mode=payment_mode,
+            source_ref=f"retail-payment:{bill.id}"
+        ))
+
+    db.commit()
+    db.refresh(bill)
+
+    saved_items = db.query(models.RetailBillItem).filter(
+        models.RetailBillItem.bill_id == bill.id
+    ).order_by(models.RetailBillItem.line_order.asc()).all()
+
+    return {
+        "status": "success",
+        "message": "Retail bill created",
+        "bill": serialize_retail_bill(bill, saved_items)
+    }
+
+
 @app.get("/daily-sheet")
 def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_db)):
     target_date = parse_input_date(date)
@@ -2361,6 +2698,34 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
 
     gross_profit = total_sales_amount - purchase_total_amount + closing_amount - opening_total_amount
 
+    retail_credit_bills = db.query(models.RetailBill).filter(
+        models.RetailBill.date == target_date,
+        models.RetailBill.outstanding_amount > 0
+    ).order_by(
+        models.RetailBill.customer_name.asc().nulls_last(),
+        models.RetailBill.bill_number.asc()
+    ).all()
+
+    retail_credit_rows = []
+    retail_credit_total = Decimal("0")
+    retail_credit_paid = Decimal("0")
+    retail_credit_outstanding = Decimal("0")
+    for bill in retail_credit_bills:
+        bill_total = Decimal(bill.total_amount or 0)
+        bill_paid = Decimal(bill.paid_amount or 0)
+        bill_outstanding = Decimal(bill.outstanding_amount or 0)
+        retail_credit_rows.append(format_retail_credit_row(
+            bill.customer_name,
+            bill.bill_number,
+            bill_total,
+            bill_paid,
+            bill_outstanding,
+            bill.payment_mode
+        ))
+        retail_credit_total += bill_total
+        retail_credit_paid += bill_paid
+        retail_credit_outstanding += bill_outstanding
+
     return {
         "date": str(target_date),
         "opening_stock": {
@@ -2381,6 +2746,15 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
             "gross_profit": {
                 "rate": float((gross_profit / total_sales_amount * Decimal("100")) if total_sales_amount > 0 else Decimal("0")),
                 "total": float(gross_profit)
+            }
+        },
+        "retail_credit_sheet": {
+            "rows": retail_credit_rows,
+            "total": {
+                "label": "TOTAL CREDIT",
+                "total_amount": float(retail_credit_total),
+                "paid_amount": float(retail_credit_paid),
+                "outstanding_amount": float(retail_credit_outstanding)
             }
         },
         "meta": {

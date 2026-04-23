@@ -25,7 +25,7 @@ async function loadDailySheet() {
 
     if (sheetType === "stock") {
       meta.className = "notice info";
-      meta.innerHTML = `<strong>${data.meta?.nag_available ? "NAG values are available." : "NAG values are not stored in the app yet, so that column is left blank."}</strong>`;
+      meta.innerHTML = `<strong>${data.meta?.nag_available ? "NAG values are available." : "NAG values are not stored in the app yet, so that column is left blank."}</strong><br>Retail bills created from the Retail Billing section are included automatically under the Retail section, and known customers taking goods on credit appear below in Retail Credit Customers.`;
 
       content.appendChild(createSheetSection(`Opening Stock ${formatDisplayDate(date)}`, data.opening_stock));
       content.appendChild(createSheetSection("Purchase Stock", data.purchase_stock));
@@ -33,6 +33,10 @@ async function loadDailySheet() {
       (data.sales_sections || []).forEach(section => {
         content.appendChild(createSheetSection(section.title, section));
       });
+
+      if (data.retail_credit_sheet?.rows?.length) {
+        content.appendChild(createRetailCreditSection("Retail Credit Customers", data.retail_credit_sheet.rows, data.retail_credit_sheet.total));
+      }
 
       content.appendChild(createFinalSummarySection(data.final_stock));
       return;
@@ -168,6 +172,53 @@ function createBalanceRow(row, isTotal = false) {
   appendDailyCell(tr, formatMoneyCompact(row.purchases));
   appendDailyCell(tr, formatMoneyCompact(row.payment));
   appendDailyCell(tr, formatMoneyCompact(row.balance));
+  return tr;
+}
+
+function createRetailCreditSection(title, rows, totals) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "daily-sheet-section";
+
+  const heading = document.createElement("h3");
+  heading.innerText = title;
+  wrapper.appendChild(heading);
+
+  const tableWrap = document.createElement("div");
+  tableWrap.className = "table-card daily-sheet-table";
+
+  const table = document.createElement("table");
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>Customer</th>
+        <th>Bill No</th>
+        <th>Total</th>
+        <th>Paid</th>
+        <th>Outstanding</th>
+        <th>Mode</th>
+      </tr>
+    </thead>
+  `;
+
+  const body = document.createElement("tbody");
+  (rows || []).forEach(row => body.appendChild(createRetailCreditRow(row)));
+  if (totals) body.appendChild(createRetailCreditRow(totals, true));
+  table.appendChild(body);
+  tableWrap.appendChild(table);
+  wrapper.appendChild(tableWrap);
+  return wrapper;
+}
+
+function createRetailCreditRow(row, isTotal = false) {
+  const tr = document.createElement("tr");
+  if (isTotal) tr.className = "sheet-total-row";
+
+  appendDailyCell(tr, row.customer_name || row.label || "");
+  appendDailyCell(tr, row.bill_number || "-");
+  appendDailyCell(tr, formatMoneyCompact(row.total_amount));
+  appendDailyCell(tr, formatMoneyCompact(row.paid_amount));
+  appendDailyCell(tr, formatMoneyCompact(row.outstanding_amount));
+  appendDailyCell(tr, row.payment_mode || (isTotal ? "-" : "Credit"));
   return tr;
 }
 
