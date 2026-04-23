@@ -308,6 +308,50 @@ function loadPage(page) {
       `;
     }
 
+    // --- Daily Sheet Page
+    else if (page === "daily-sheet") {
+      title.innerText = "Daily Sheet";
+
+      content.innerHTML = `
+        <div class="container">
+
+          <div class="page-intro">
+            <span>Daily Trading Sheet</span>
+            <h2>Opening stock, purchases, sales by section, and final stock summary</h2>
+          </div>
+
+          <div class="card filter toolbar">
+            <select id="dailySheetType">
+              <option value="stock">Stock Sheet</option>
+              <option value="vendor">Vendor Balance Sheet</option>
+              <option value="dealer">Dealer Balance Sheet</option>
+            </select>
+            <input type="date" id="dailySheetDate">
+            <button onclick="loadDailySheet()">Load Sheet</button>
+          </div>
+
+          <div class="section daily-sheet-card">
+            <div class="section-head">
+              <div>
+                <span>Daily Statement</span>
+                <h2 id="dailySheetTitle">Opening Stock</h2>
+              </div>
+              <button onclick="window.print()">Print</button>
+            </div>
+
+            <div id="dailySheetMeta" class="notice info"></div>
+            <div id="dailySheetContent"></div>
+          </div>
+
+        </div>
+      `;
+
+      setTimeout(() => {
+        document.getElementById("dailySheetDate").value = formatDateInput(new Date());
+        loadDailySheet();
+      }, 100);
+    }
+
     // --- Analytics Page
     else if (page === "analytics") {
       title.innerText = "Analytics";

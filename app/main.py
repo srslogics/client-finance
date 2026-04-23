@@ -358,6 +358,49 @@ def safe_filename(value):
     return quote(cleaned[:120] or "report")
 
 
+def latest_item_rates(db: Session, target_date):
+    rows = db.query(
+        models.Transaction.item_type,
+        models.Transaction.rate,
+        models.Transaction.date
+    ).filter(
+        models.Transaction.item_type.isnot(None),
+        models.Transaction.rate.isnot(None),
+        models.Transaction.date <= target_date,
+        models.Transaction.type.in_(["PURCHASE", "SALE"])
+    ).order_by(
+        models.Transaction.item_type.asc(),
+        models.Transaction.date.desc(),
+        models.Transaction.created_at.desc()
+    ).all()
+
+    rates = {}
+    for row in rows:
+        if row.item_type and row.item_type not in rates:
+            rates[row.item_type] = Decimal(row.rate or 0)
+    return rates
+
+
+def format_sheet_row(label, weight=0, rate=0, amount=0, nag=None):
+    return {
+        "goods": label,
+        "nag": nag if nag is not None else "",
+        "weight": float(weight or 0),
+        "rate": float(rate or 0),
+        "total": float(amount or 0)
+    }
+
+
+def format_balance_row(party_name, old_balance=0, purchases=0, payment=0, balance=0):
+    return {
+        "party_name": party_name,
+        "old_balance": float(old_balance or 0),
+        "purchases": float(purchases or 0),
+        "payment": float(payment or 0),
+        "balance": float(balance or 0)
+    }
+
+
 def get_or_create_party(db: Session, party_name: str, party_type: str, seen_aliases: dict):
     normalized = normalize_party_name(party_name)
 
@@ -2103,6 +2146,247 @@ def payment_modes(start_date: str, end_date: str, db: Session = Depends(get_db))
         }
         for row in sorted(rows, key=lambda value: (value.received or 0) + (value.paid or 0), reverse=True)
     ]
+
+
+@app.get("/daily-sheet")
+def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_db)):
+    target_date = parse_input_date(date)
+    if not target_date:
+        return {"error": "Invalid date format"}
+
+    sheet_type = sheet_type.strip().lower()
+
+    if sheet_type in ["vendor", "dealer"]:
+        if sheet_type == "vendor":
+            old_case = case(
+                (
+                    (models.Transaction.date < target_date) & (models.Transaction.type == "SALE"),
+                    models.Transaction.amount
+                ),
+                (
+                    (models.Transaction.date < target_date) & (models.Transaction.type == "OPENING") & (models.Transaction.category == "RECEIVABLE"),
+                    models.Transaction.amount
+                ),
+                (
+                    (models.Transaction.date < target_date) & (models.Transaction.type == "PAYMENT") & (models.Transaction.category == "RECEIVED"),
+                    -models.Transaction.amount
+                ),
+                else_=0
+            )
+            purchases_case = case(
+                (
+                    (models.Transaction.date == target_date) & (models.Transaction.type == "SALE"),
+                    models.Transaction.amount
+                ),
+                else_=0
+            )
+            payment_case = case(
+                (
+                    (models.Transaction.date == target_date) & (models.Transaction.type == "PAYMENT") & (models.Transaction.category == "RECEIVED"),
+                    models.Transaction.amount
+                ),
+                else_=0
+            )
+        else:
+            old_case = case(
+                (
+                    (models.Transaction.date < target_date) & (models.Transaction.type == "PURCHASE"),
+                    models.Transaction.amount
+                ),
+                (
+                    (models.Transaction.date < target_date) & (models.Transaction.type == "OPENING") & (models.Transaction.category == "PAYABLE"),
+                    models.Transaction.amount
+                ),
+                (
+                    (models.Transaction.date < target_date) & (models.Transaction.type == "PAYMENT") & (models.Transaction.category == "PAID"),
+                    -models.Transaction.amount
+                ),
+                else_=0
+            )
+            purchases_case = case(
+                (
+                    (models.Transaction.date == target_date) & (models.Transaction.type == "PURCHASE"),
+                    models.Transaction.amount
+                ),
+                else_=0
+            )
+            payment_case = case(
+                (
+                    (models.Transaction.date == target_date) & (models.Transaction.type == "PAYMENT") & (models.Transaction.category == "PAID"),
+                    models.Transaction.amount
+                ),
+                else_=0
+            )
+
+        rows = db.query(
+            models.Party.name.label("party_name"),
+            func.sum(old_case).label("old_balance"),
+            func.sum(purchases_case).label("purchases"),
+            func.sum(payment_case).label("payment")
+        ).join(
+            models.Transaction,
+            models.Transaction.party_id == models.Party.id
+        ).group_by(
+            models.Party.id,
+            models.Party.name
+        ).order_by(
+            models.Party.name.asc()
+        ).all()
+
+        result_rows = []
+        total_old = Decimal("0")
+        total_purchases = Decimal("0")
+        total_payment = Decimal("0")
+        total_balance = Decimal("0")
+
+        for row in rows:
+            old_balance = Decimal(row.old_balance or 0)
+            purchases = Decimal(row.purchases or 0)
+            payment = Decimal(row.payment or 0)
+            balance = old_balance + purchases - payment
+
+            if old_balance == 0 and purchases == 0 and payment == 0 and balance == 0:
+                continue
+
+            result_rows.append(format_balance_row(row.party_name, old_balance, purchases, payment, balance))
+            total_old += old_balance
+            total_purchases += purchases
+            total_payment += payment
+            total_balance += balance
+
+        return {
+            "date": str(target_date),
+            "sheet_type": sheet_type,
+            "title": "Vendor Balance Sheet" if sheet_type == "vendor" else "Dealer Balance Sheet",
+            "rows": result_rows,
+            "totals": format_balance_row("TOTAL", total_old, total_purchases, total_payment, total_balance)
+        }
+
+    rates = latest_item_rates(db, target_date)
+
+    processed_rows = db.query(models.DailyItemStock).filter(
+        models.DailyItemStock.date == target_date
+    ).all()
+    processed_by_item = {row.item_type: row for row in processed_rows}
+
+    opening_source = {}
+    if processed_rows:
+        for row in processed_rows:
+            opening_source[row.item_type] = Decimal(row.opening_weight or 0)
+    else:
+        prev_rows = db.query(models.DailyItemStock).filter(
+            models.DailyItemStock.date < target_date
+        ).order_by(models.DailyItemStock.date.desc()).all()
+        if prev_rows:
+            for row in prev_rows:
+                opening_source.setdefault(row.item_type, Decimal(row.actual_closing_weight or 0))
+        else:
+            for row in db.query(models.ItemOpeningStock).filter(
+                models.ItemOpeningStock.date <= target_date
+            ).order_by(models.ItemOpeningStock.date.desc()).all():
+                opening_source.setdefault(row.item_type, Decimal(row.opening_weight or 0))
+
+    opening_rows = []
+    opening_total_weight = Decimal("0")
+    opening_total_amount = Decimal("0")
+    for item, weight in sorted(opening_source.items()):
+        rate = rates.get(item, Decimal("0"))
+        amount = weight * rate
+        opening_rows.append(format_sheet_row(item, weight, rate, amount))
+        opening_total_weight += weight
+        opening_total_amount += amount
+
+    purchase_rows_raw = db.query(models.Transaction).filter(
+        models.Transaction.date == target_date,
+        models.Transaction.type == "PURCHASE"
+    ).order_by(models.Transaction.item_type.asc(), models.Transaction.party_id.asc()).all()
+
+    purchase_rows = []
+    purchase_total_weight = Decimal("0")
+    purchase_total_amount = Decimal("0")
+    purchase_total_rate_weight = Decimal("0")
+    for txn in purchase_rows_raw:
+        weight = Decimal(txn.weight or 0)
+        rate = Decimal(txn.rate or 0)
+        amount = Decimal(txn.amount or 0)
+        label = txn.item_type or "Unknown"
+        purchase_rows.append(format_sheet_row(label, weight, rate, amount))
+        purchase_total_weight += weight
+        purchase_total_amount += amount
+        purchase_total_rate_weight += weight * rate
+
+    sales_raw = db.query(models.Transaction).filter(
+        models.Transaction.date == target_date,
+        models.Transaction.type == "SALE"
+    ).order_by(models.Transaction.category.asc().nulls_last(), models.Transaction.item_type.asc()).all()
+
+    sales_sections = {}
+    for txn in sales_raw:
+        section = (txn.category or "OTHER").strip().upper()
+        sales_sections.setdefault(section, [])
+        weight = Decimal(txn.weight or 0)
+        rate = Decimal(txn.rate or 0)
+        amount = Decimal(txn.amount or 0)
+        sales_sections[section].append(format_sheet_row(txn.item_type or "Unknown", weight, rate, amount))
+
+    section_order = ["WHOLESALE", "HOTEL", "RETAIL", "RETAILS", "SHOP", "CUSTOMER", "OTHER"]
+    ordered_sales_sections = []
+    for section in section_order + [s for s in sales_sections.keys() if s not in section_order]:
+        rows = sales_sections.get(section)
+        if not rows:
+            continue
+        total_weight = sum(Decimal(str(row["weight"])) for row in rows)
+        total_amount = sum(Decimal(str(row["total"])) for row in rows)
+        avg_rate = (total_amount / total_weight) if total_weight > 0 else Decimal("0")
+        ordered_sales_sections.append({
+            "title": section.title(),
+            "rows": rows,
+            "total": format_sheet_row("TOTAL", total_weight, avg_rate, total_amount)
+        })
+
+    total_sales_weight = sum(Decimal(t.weight or 0) for t in sales_raw)
+    total_sales_amount = sum(Decimal(t.amount or 0) for t in sales_raw)
+    total_sales_rate = (total_sales_amount / total_sales_weight) if total_sales_weight > 0 else Decimal("0")
+
+    total_purchase_rate = (purchase_total_amount / purchase_total_weight) if purchase_total_weight > 0 else Decimal("0")
+
+    closing_weight = opening_total_weight + purchase_total_weight - total_sales_weight
+    closing_rate = total_purchase_rate if total_purchase_rate > 0 else Decimal("0")
+    closing_amount = closing_weight * closing_rate
+
+    actual_weight = sum(Decimal(row.actual_closing_weight or 0) for row in processed_rows) if processed_rows else Decimal("0")
+    actual_amount = actual_weight * closing_rate
+    short_weight = closing_weight - actual_weight
+    short_amount = short_weight * closing_rate
+
+    gross_profit = total_sales_amount - purchase_total_amount + closing_amount - opening_total_amount
+
+    return {
+        "date": str(target_date),
+        "opening_stock": {
+            "rows": opening_rows,
+            "total": format_sheet_row("TOTAL", opening_total_weight, (opening_total_amount / opening_total_weight) if opening_total_weight > 0 else Decimal("0"), opening_total_amount)
+        },
+        "purchase_stock": {
+            "rows": purchase_rows,
+            "total": format_sheet_row("TOTAL", purchase_total_weight, total_purchase_rate, purchase_total_amount)
+        },
+        "sales_sections": ordered_sales_sections,
+        "final_stock": {
+            "total_purchases": format_sheet_row("TOTAL PURCHASES", purchase_total_weight, total_purchase_rate, purchase_total_amount),
+            "sales": format_sheet_row("SALES", total_sales_weight, total_sales_rate, total_sales_amount),
+            "closing_stock": format_sheet_row("CLOSING STOCK", closing_weight, closing_rate, closing_amount),
+            "actual_stock": format_sheet_row("ACTUAL STOCK", actual_weight, closing_rate, actual_amount),
+            "short_by": format_sheet_row("SHORT BY", short_weight, closing_rate, short_amount),
+            "gross_profit": {
+                "rate": float((gross_profit / total_sales_amount * Decimal("100")) if total_sales_amount > 0 else Decimal("0")),
+                "total": float(gross_profit)
+            }
+        },
+        "meta": {
+            "nag_available": False
+        }
+    }
 
 
 @app.get("/inventory/by-item")
