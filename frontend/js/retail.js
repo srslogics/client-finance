@@ -76,7 +76,13 @@ async function refreshRetailBillNumber() {
   if (!date || !billNumber) return;
 
   try {
-    const data = await optionalApiCall(`/retail-bills/next-number?date=${encodeURIComponent(date)}`, { bill_number: "1" });
+    const data = await optionalApiCall(
+      `/retail-bills/next-number?date=${encodeURIComponent(date)}`,
+      { bill_number: "1" },
+      "GET",
+      null,
+      { cache: false }
+    );
     billNumber.value = data.bill_number || "1";
     renderRetailPreviewFromForm();
   } catch (e) {
@@ -267,7 +273,6 @@ function renderRetailPreview(bill, isDraft = false) {
 
   preview.innerHTML = `
     <div class="thermal-bill">
-      ${isDraft ? `<div class="thermal-badge">Draft Preview</div>` : ""}
       <div class="thermal-center">
         <div class="thermal-label">INVOICE</div>
         <h3>${escapeHtml(RETAIL_SHOP_PROFILE.name)}</h3>
@@ -306,7 +311,7 @@ function renderRetailPreview(bill, isDraft = false) {
 
       <div class="thermal-summary">
         <p><span>Total Item(s)</span><strong>${bill.items.length}</strong></p>
-        <p><span>Total NAG</span><strong>${Number(bill.total_nag || bill.total_quantity || 0).toFixed(3)}</strong></p>
+        <p><span>Total NAG</span><strong>${formatBillNag(bill.total_nag || bill.total_quantity || 0)}</strong></p>
         <p><span>Total Weight</span><strong>${Number(bill.total_weight || 0).toFixed(3)} kg</strong></p>
         <p class="thermal-total"><span>TOTAL</span><strong>${formatBillMoney(bill.total_amount)}</strong></p>
         <p><span>${escapeHtml(bill.payment_mode || "Cash")} Payment</span><strong>${formatBillMoney(bill.paid_amount)}</strong></p>
@@ -386,7 +391,14 @@ async function loadRetailBills() {
   try {
     const params = new URLSearchParams();
     if (date) params.set("date", date);
-    const data = await optionalApiCall(`/retail-bills?${params.toString()}`, { results: [] });
+    const query = params.toString();
+    const data = await optionalApiCall(
+      `/retail-bills${query ? `?${query}` : ""}`,
+      { results: [] },
+      "GET",
+      null,
+      { cache: false }
+    );
 
     if (!data.results?.length) {
       body.innerHTML = `<tr><td colspan="8" class="empty">No retail bills for this date</td></tr>`;
@@ -416,7 +428,7 @@ async function loadRetailBills() {
 
 async function openRetailBill(billId) {
   try {
-    const data = await apiCall(`/retail-bills/${billId}`);
+    const data = await apiCall(`/retail-bills/${billId}`, "GET", null, {}, { cache: false });
     if (data.error) {
       showToast(data.error);
       return;
@@ -570,7 +582,15 @@ function suggestRetailCustomers() {
 }
 
 function formatBillQuantity(quantity, unit) {
-  return `${Number(quantity || 0).toFixed(unit === "PCS" ? 0 : 3)} ${unit === "PCS" ? "NAG" : unit}`;
+  if (unit === "PCS") {
+    return formatBillNag(quantity);
+  }
+
+  return `${Number(quantity || 0).toFixed(3)} ${unit}`;
+}
+
+function formatBillNag(value) {
+  return Number(value || 0).toFixed(0);
 }
 
 function formatBillRate(value) {

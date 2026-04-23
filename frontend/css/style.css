@@ -701,16 +701,6 @@ input[type="file"] {
   font-family: "Courier New", monospace;
 }
 
-.thermal-badge {
-  margin-bottom: 8px;
-  color: #2f7f96;
-  font-size: 11px;
-  font-weight: 700;
-  text-align: center;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
 .thermal-center {
   text-align: center;
 }
@@ -755,6 +745,7 @@ input[type="file"] {
 .thermal-items-table {
   width: 100%;
   margin-top: 12px;
+  table-layout: fixed;
   border-collapse: collapse;
 }
 
@@ -763,6 +754,33 @@ input[type="file"] {
   padding: 5px 0;
   border-bottom: 1px dashed #d8dee8;
   font-size: 12px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.thermal-items-table th:nth-child(1),
+.thermal-items-table td:nth-child(1) {
+  width: 9%;
+}
+
+.thermal-items-table th:nth-child(2),
+.thermal-items-table td:nth-child(2) {
+  width: 39%;
+}
+
+.thermal-items-table th:nth-child(3),
+.thermal-items-table td:nth-child(3) {
+  width: 16%;
+}
+
+.thermal-items-table th:nth-child(4),
+.thermal-items-table td:nth-child(4) {
+  width: 16%;
+}
+
+.thermal-items-table th:nth-child(5),
+.thermal-items-table td:nth-child(5) {
+  width: 20%;
 }
 
 .thermal-items-table th:nth-child(3),
