@@ -868,7 +868,7 @@ function shouldQueueRetailOffline(error) {
 }
 
 function computeNextRetailBillNumber(date, baseline = "1") {
-  const pendingBills = getPendingRetailBills().filter(bill => bill.date === date);
+  const pendingBills = getPendingRetailBills();
   const maxPending = pendingBills.reduce((maxValue, bill) => {
     const digits = Number(String(bill.bill_number || "").replace(/\D/g, "")) || 0;
     return Math.max(maxValue, digits);

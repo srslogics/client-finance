@@ -2474,9 +2474,7 @@ def next_retail_bill_number(date: str, db: Session = Depends(get_db)):
     if not target_date:
         return {"error": "Invalid date format"}
 
-    bill_numbers = db.query(models.RetailBill.bill_number).filter(
-        models.RetailBill.date == target_date
-    ).all()
+    bill_numbers = db.query(models.RetailBill.bill_number).all()
 
     max_number = 0
     for row in bill_numbers:
