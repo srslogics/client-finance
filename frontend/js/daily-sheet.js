@@ -182,6 +182,25 @@ function createBalanceSheetSection(title, rows, totals) {
   const metrics = buildBalanceMetrics(rows || [], totals);
   wrapper.appendChild(createMetricCardStrip(metrics.cards));
 
+  const help = document.createElement("div");
+  help.className = "notice info balance-help";
+  help.innerHTML = `
+    <strong>How to read this sheet</strong>
+    <ul>
+      <li><strong>Old Bal</strong>: balance up to the previous day.</li>
+      <li><strong>Purchases</strong>: today's sale or purchase amount for the selected party.</li>
+      <li><strong>Payment</strong>: money received or paid today.</li>
+      <li><strong>Balance</strong>: old balance + today's business - today's payment.</li>
+      <li><strong>All Parties</strong>: shows every party in the sheet.</li>
+      <li><strong>Active Today</strong>: parties with some movement today, either business or payment.</li>
+      <li><strong>Unpaid Today</strong>: parties with today's business but no payment today.</li>
+      <li><strong>High Balance</strong>: parties with larger outstanding balance.</li>
+      <li><strong>Search</strong>: type any party name to narrow the list.</li>
+      <li><strong>Row colors</strong>: pale yellow means unpaid today, pale blue means high balance, green text means advance or credit in your favor.</li>
+    </ul>
+  `;
+  wrapper.appendChild(help);
+
   const controls = document.createElement("div");
   controls.className = "balance-filter-bar";
   controls.innerHTML = `
@@ -223,7 +242,12 @@ function createBalanceSheetSection(title, rows, totals) {
     body.innerHTML = "";
     const filteredRows = filterBalanceRows(rows || [], currentFilter, currentQuery, metrics.highBalanceThreshold);
     filteredRows.forEach(row => body.appendChild(createBalanceRow(row, false, metrics.highBalanceThreshold)));
-    if (totals) body.appendChild(createBalanceRow(totals, true));
+    if (totals) {
+      const summaryRow = currentFilter === "all" && !currentQuery.trim()
+        ? totals
+        : buildFilteredBalanceTotals(filteredRows);
+      body.appendChild(createBalanceRow(summaryRow, true));
+    }
   }
 
   controls.querySelectorAll(".balance-filter-chip").forEach(button => {
@@ -278,30 +302,36 @@ function buildBalanceMetrics(rows, totals) {
     {
       label: "Old Balance",
       value: Number(totals?.old_balance || 0),
-      prefix: "Rs "
+      prefix: "Rs ",
+      subvalue: "Previous day balance"
     },
     {
       label: "Today Business",
       value: Number(totals?.purchases || 0),
-      prefix: "Rs "
+      prefix: "Rs ",
+      subvalue: "Today's sale or purchase"
     },
     {
       label: "Today Payment",
       value: Number(totals?.payment || 0),
-      prefix: "Rs "
+      prefix: "Rs ",
+      subvalue: "Cash received or paid today"
     },
     {
       label: "Closing Balance",
       value: Number(totals?.balance || 0),
-      prefix: "Rs "
+      prefix: "Rs ",
+      subvalue: "Balance after today's entries"
     },
     {
       label: "Active Parties",
-      value: activeRows.length
+      value: activeRows.length,
+      subvalue: "Had business or payment today"
     },
     {
       label: "Unpaid Today",
-      value: unpaidRows.length
+      value: unpaidRows.length,
+      subvalue: "Business today, payment not received"
     },
     {
       label: "High Balance",
@@ -337,6 +367,21 @@ function filterBalanceRows(rows, filter, query, highBalanceThreshold) {
     if (filter === "high") return balance >= highBalanceThreshold;
     return true;
   });
+}
+
+function buildFilteredBalanceTotals(rows) {
+  const summed = rows.reduce((acc, row) => {
+    acc.old_balance += Number(row.old_balance || 0);
+    acc.purchases += Number(row.purchases || 0);
+    acc.payment += Number(row.payment || 0);
+    acc.balance += Number(row.balance || 0);
+    return acc;
+  }, { old_balance: 0, purchases: 0, payment: 0, balance: 0 });
+
+  return {
+    party_name: "FILTERED TOTAL",
+    ...summed
+  };
 }
 
 function createRetailCreditSection(title, rows, totals) {

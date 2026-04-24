@@ -407,6 +407,18 @@ input[type="file"] {
   flex-wrap: wrap;
 }
 
+.balance-help {
+  margin: 0 0 14px;
+}
+
+.balance-help ul {
+  margin: 10px 0 0 18px;
+}
+
+.balance-help li {
+  margin: 5px 0;
+}
+
 .balance-search {
   width: min(360px, 100%);
 }
