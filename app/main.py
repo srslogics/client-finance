@@ -10,7 +10,7 @@ import pandas as pd
 from sqlalchemy.orm import Session
 from app.db import SessionLocal
 from app import models
-from sqlalchemy import case, func, text
+from sqlalchemy import case, func, text, or_
 from decimal import Decimal
 import uvicorn
 from fastapi.middleware.cors import CORSMiddleware
@@ -2722,9 +2722,29 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
 
     if sheet_type in ["vendor", "dealer"]:
         if sheet_type == "vendor":
+            non_retail_sale = (
+                (models.Transaction.type == "SALE") &
+                or_(
+                    models.Transaction.category.is_(None),
+                    ~models.Transaction.category.in_(["RETAIL", "RETAIL DRESSED"])
+                )
+            )
+            received_payment = (
+                (models.Transaction.type == "PAYMENT") &
+                (models.Transaction.category == "RECEIVED") &
+                or_(
+                    models.Transaction.item_type.is_(None),
+                    models.Transaction.item_type != "Retail Bill Payment"
+                )
+            )
+            relevant_filter = (
+                non_retail_sale |
+                ((models.Transaction.type == "OPENING") & (models.Transaction.category == "RECEIVABLE")) |
+                received_payment
+            )
             old_case = case(
                 (
-                    (models.Transaction.date < target_date) & (models.Transaction.type == "SALE"),
+                    (models.Transaction.date < target_date) & non_retail_sale,
                     models.Transaction.amount
                 ),
                 (
@@ -2739,19 +2759,24 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
             )
             purchases_case = case(
                 (
-                    (models.Transaction.date == target_date) & (models.Transaction.type == "SALE"),
+                    (models.Transaction.date == target_date) & non_retail_sale,
                     models.Transaction.amount
                 ),
                 else_=0
             )
             payment_case = case(
                 (
-                    (models.Transaction.date == target_date) & (models.Transaction.type == "PAYMENT") & (models.Transaction.category == "RECEIVED"),
+                    (models.Transaction.date == target_date) & received_payment,
                     models.Transaction.amount
                 ),
                 else_=0
             )
         else:
+            relevant_filter = (
+                (models.Transaction.type == "PURCHASE") |
+                ((models.Transaction.type == "OPENING") & (models.Transaction.category == "PAYABLE")) |
+                ((models.Transaction.type == "PAYMENT") & (models.Transaction.category == "PAID"))
+            )
             old_case = case(
                 (
                     (models.Transaction.date < target_date) & (models.Transaction.type == "PURCHASE"),
@@ -2790,6 +2815,8 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
         ).join(
             models.Transaction,
             models.Transaction.party_id == models.Party.id
+        ).filter(
+            relevant_filter
         ).group_by(
             models.Party.id,
             models.Party.name
