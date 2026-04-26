@@ -18,6 +18,7 @@ const RETAIL_SHORTCUT_STORAGE_KEY = "stockpilot.retail.shortcuts";
 
 let retailItemSuggestTimer = null;
 let retailCustomerSuggestTimer = null;
+let paymentReceiptSuggestTimer = null;
 let currentRetailBill = null;
 let currentPaymentReceipt = null;
 let retailDraftDirty = false;
@@ -27,16 +28,27 @@ let paymentReceiptCompleted = false;
 let retailConnectivityListenersAttached = false;
 let dressedStockCache = [];
 let retailBillingMode = "regular";
+let retailPreviewRenderTimer = null;
+let paymentReceiptPreviewRenderTimer = null;
+let retailPageBootstrapped = false;
+let paymentReceiptHistoryLoaded = false;
+let dressedStockLoadedForDate = "";
 
 function initRetailPage() {
+  retailPageBootstrapped = false;
+  paymentReceiptHistoryLoaded = false;
+  dressedStockLoadedForDate = "";
   const dateInput = document.getElementById("retailDate");
   if (!dateInput) return;
 
   dateInput.value = formatDateInput(new Date());
   dateInput.addEventListener("change", async () => {
     await refreshRetailBillNumber();
-    loadRetailBills();
-    loadDressedStock();
+    await loadRetailBills();
+    if (retailBillingMode === "dressed") {
+      await ensureDressedStockLoaded();
+    }
+    scheduleRetailPreviewRender();
   });
 
   const formIds = [
@@ -108,20 +120,16 @@ function initRetailPage() {
 
   attachRetailConnectivityListeners();
   addRegularRetailRow();
-  addDressedRetailRow();
-  addDressedStockRow();
   renderRetailShortcuts();
   renderShortcutManagerList();
   renderRetailOfflineBanner();
   syncRetailSettlementUi();
   setRetailBillingMode("regular");
   refreshRetailBillNumber();
-  refreshPaymentReceiptNumber();
-  renderRetailPreviewFromForm();
+  scheduleRetailPreviewRender();
   loadRetailBills();
-  loadPaymentReceipts();
-  loadDressedStock();
   syncPendingRetailBills(true);
+  retailPageBootstrapped = true;
 }
 
 function setRetailBillingMode(mode) {
@@ -149,12 +157,47 @@ function setRetailBillingMode(mode) {
   if (paymentHistorySection) paymentHistorySection.style.display = retailBillingMode === "payment" ? "" : "none";
 
   if (retailBillingMode === "payment") {
-    renderPaymentReceiptPreviewFromForm();
+    ensurePaymentReceiptModeReady();
+    schedulePaymentReceiptPreviewRender();
   } else if (currentRetailBill && !retailDraftDirty) {
     renderRetailPreview(currentRetailBill);
   } else {
-    renderRetailPreviewFromForm();
+    if (retailBillingMode === "dressed") {
+      ensureDressedModeReady();
+    }
+    scheduleRetailPreviewRender();
   }
+}
+
+async function ensurePaymentReceiptModeReady() {
+  const paymentReceiptDate = document.getElementById("paymentReceiptDate");
+  if (paymentReceiptDate && !paymentReceiptDate.value) {
+    paymentReceiptDate.value = formatDateInput(new Date());
+  }
+  await refreshPaymentReceiptNumber();
+  if (!paymentReceiptHistoryLoaded) {
+    await loadPaymentReceipts();
+    paymentReceiptHistoryLoaded = true;
+  }
+}
+
+async function ensureDressedModeReady() {
+  const dressedRows = document.getElementById("retailDressedRows");
+  const dressedStockRows = document.getElementById("dressedStockRows");
+  if (dressedRows && dressedRows.children.length === 0) {
+    addDressedRetailRow();
+  }
+  if (dressedStockRows && dressedStockRows.children.length === 0) {
+    addDressedStockRow();
+  }
+  await ensureDressedStockLoaded();
+}
+
+async function ensureDressedStockLoaded() {
+  const date = document.getElementById("retailDate")?.value || "";
+  if (!date) return;
+  if (dressedStockLoadedForDate === date && dressedStockCache.length) return;
+  await loadDressedStock();
 }
 
 async function refreshPaymentReceiptNumber() {
@@ -342,7 +385,7 @@ function addRetailItemRow(item = null, defaultLineType = "STANDARD") {
   syncRetailLineUi(row);
   retailDraftDirty = true;
   retailBillCompleted = false;
-  renderRetailPreviewFromForm();
+  scheduleRetailPreviewRender();
 }
 
 function addShortcutRetailItem(shortcut) {
@@ -398,14 +441,14 @@ function removeRetailItemRow(button) {
     syncRetailLineUi(row);
     retailDraftDirty = true;
     retailBillCompleted = false;
-    renderRetailPreviewFromForm();
+    scheduleRetailPreviewRender();
     return;
   }
 
   row.remove();
   retailDraftDirty = true;
   retailBillCompleted = false;
-  renderRetailPreviewFromForm();
+  scheduleRetailPreviewRender();
 }
 
 function recalcRetailLine(source) {
@@ -455,7 +498,7 @@ function recalcRetailLine(source) {
 
   retailDraftDirty = true;
   retailBillCompleted = false;
-  renderRetailPreviewFromForm();
+  scheduleRetailPreviewRender();
 }
 
 function getRetailShortcutByName(name) {
@@ -582,26 +625,44 @@ function renderPaymentReceiptPreviewFromForm() {
 function markRetailAmountDirty() {
   retailDraftDirty = true;
   retailBillCompleted = false;
-  renderRetailPreviewFromForm();
+  scheduleRetailPreviewRender();
 }
 
 function markRetailDraftDirty() {
   retailDraftDirty = true;
   retailBillCompleted = false;
-  renderRetailPreviewFromForm();
+  scheduleRetailPreviewRender();
 }
 
 function markPaymentReceiptDraftDirty() {
   paymentReceiptDraftDirty = true;
   paymentReceiptCompleted = false;
   if (retailBillingMode === "payment") {
-    renderPaymentReceiptPreviewFromForm();
+    schedulePaymentReceiptPreviewRender();
   }
 }
 
 function handleRetailSettlementTypeChange() {
   syncRetailSettlementUi();
   markRetailDraftDirty();
+}
+
+function scheduleRetailPreviewRender() {
+  clearTimeout(retailPreviewRenderTimer);
+  retailPreviewRenderTimer = setTimeout(() => {
+    if (retailBillingMode !== "payment") {
+      renderRetailPreviewFromForm();
+    }
+  }, 60);
+}
+
+function schedulePaymentReceiptPreviewRender() {
+  clearTimeout(paymentReceiptPreviewRenderTimer);
+  paymentReceiptPreviewRenderTimer = setTimeout(() => {
+    if (retailBillingMode === "payment") {
+      renderPaymentReceiptPreviewFromForm();
+    }
+  }, 60);
 }
 
 function syncRetailSettlementUi() {
@@ -739,7 +800,9 @@ async function saveRetailBill() {
     renderRetailPreview(currentRetailBill);
     showToast(`Retail bill ${currentRetailBill.bill_number} saved`);
     await loadRetailBills();
-    await loadDressedStock();
+    if (retailBillingMode === "dressed") {
+      await loadDressedStock();
+    }
     return currentRetailBill;
   } catch (e) {
     console.error(e);
@@ -851,7 +914,7 @@ async function loadPaymentReceipts() {
         <td>${escapeHtml(receipt.direction || "RECEIVED")}</td>
         <td>${escapeHtml(receipt.payment_mode || "Cash")}</td>
         <td>${formatBillMoney(receipt.amount)}</td>
-        <td><button type="button" onclick="openPaymentReceipt('${receipt.id}')">View / Print</button></td>
+        <td><button type="button" onclick="openPaymentReceipt('${receipt.id}')">Open</button></td>
       `;
       body.appendChild(row);
     });
@@ -915,7 +978,7 @@ async function loadRetailBills() {
         <td>${formatBillMoney(bill.total_amount)}</td>
         <td>${formatBillMoney(bill.paid_amount)}</td>
         <td>${formatBillMoney(bill.outstanding_amount)}</td>
-        <td><button type="button" onclick="openRetailBill('${bill.id}')">${bill.local_only ? "View / Print" : "View / Print"}</button></td>
+        <td><button type="button" onclick="openRetailBill('${bill.id}')">Open</button></td>
       `;
       body.appendChild(row);
     });
@@ -996,6 +1059,7 @@ async function loadDressedStock() {
   try {
     const data = await optionalApiCall(`/dressed-stock?date=${encodeURIComponent(date)}`, { entries: [], available_items: [] }, "GET", null, { cache: false });
     dressedStockCache = data.available_items || [];
+    dressedStockLoadedForDate = date;
     if (!dressedStockCache.length) {
       summary.innerHTML = `<div class="thermal-empty">No dressed stock saved for this date yet.</div>`;
       return;
@@ -1012,6 +1076,7 @@ async function loadDressedStock() {
     `).join("");
   } catch (e) {
     console.error(e);
+    dressedStockLoadedForDate = "";
     summary.innerHTML = `<div class="thermal-empty">Unable to load dressed stock.</div>`;
   }
 }
@@ -1370,7 +1435,7 @@ function resetPaymentReceiptForm() {
   paymentReceiptCompleted = false;
   refreshPaymentReceiptNumber();
   if (retailBillingMode === "payment") {
-    renderPaymentReceiptPreviewFromForm();
+    schedulePaymentReceiptPreviewRender();
   }
 }
 
@@ -1397,12 +1462,12 @@ function resetRetailForm() {
   syncRetailSettlementUi();
 
   addRegularRetailRow();
-  addDressedRetailRow();
   currentRetailBill = null;
   retailDraftDirty = false;
   retailBillCompleted = false;
   renderRetailOfflineBanner();
   refreshRetailBillNumber();
+  scheduleRetailPreviewRender();
 }
 
 function suggestRetailItems(input) {
@@ -1471,14 +1536,14 @@ function suggestPaymentReceiptParties() {
   const suggestions = document.getElementById("paymentReceiptPartySuggestions");
   const query = input?.value.trim() || "";
 
-  clearTimeout(retailCustomerSuggestTimer);
+  clearTimeout(paymentReceiptSuggestTimer);
 
   if (!suggestions || query.length < 2) {
     if (suggestions) suggestions.innerHTML = "";
     return;
   }
 
-  retailCustomerSuggestTimer = setTimeout(async () => {
+  paymentReceiptSuggestTimer = setTimeout(async () => {
     try {
       const data = await optionalApiCall(`/party/search?name=${encodeURIComponent(query)}`, { results: [] });
       suggestions.innerHTML = "";
@@ -1508,7 +1573,7 @@ async function hydrateRetailCustomerProfile(name) {
     const addressInput = document.getElementById("retailCustomerAddress");
     if (phoneInput && !phoneInput.value.trim()) phoneInput.value = party.phone || "";
     if (addressInput && !addressInput.value.trim()) addressInput.value = party.address || "";
-    renderRetailPreviewFromForm();
+    scheduleRetailPreviewRender();
   } catch (e) {
     console.error(e);
   }
@@ -1527,7 +1592,7 @@ async function hydratePaymentReceiptPartyProfile(name) {
     const addressInput = document.getElementById("paymentReceiptPartyAddress");
     if (phoneInput && !phoneInput.value.trim()) phoneInput.value = party.phone || "";
     if (addressInput && !addressInput.value.trim()) addressInput.value = party.address || "";
-    renderPaymentReceiptPreviewFromForm();
+    schedulePaymentReceiptPreviewRender();
   } catch (e) {
     console.error(e);
   }
