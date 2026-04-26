@@ -41,11 +41,50 @@ function loadPage(page) {
           <div id="uploadStatus" class="notice" aria-live="polite"></div>
           <datalist id="itemSuggestions"></datalist>
           <datalist id="manualPartySuggestions"></datalist>
+          <datalist id="directoryPartySuggestions"></datalist>
 
           <div class="section">
             <div class="section-head">
               <div>
                 <span>Step 2</span>
+                <h2>Party Directory</h2>
+              </div>
+            </div>
+            <div class="upload-box directory-intro">
+              Save customer, vendor, or dealer name with phone number once. Billing and receipts can then fetch it automatically.
+            </div>
+            <div class="upload-box manual-entry-row party-directory-form">
+              <input type="text" id="directoryPartyName" placeholder="Name" list="directoryPartySuggestions" autocomplete="off" oninput="suggestDirectoryParties(this)">
+              <input type="text" id="directoryPartyPhone" placeholder="Phone number">
+              <input type="text" id="directoryPartyAddress" placeholder="Address (optional)">
+              <select id="directoryPartyType">
+                <option value="BOTH">Customer / Both</option>
+                <option value="VENDOR">Vendor</option>
+                <option value="DEALER">Dealer</option>
+              </select>
+              <button type="button" onclick="savePartyDirectoryEntry()">Save Party</button>
+            </div>
+            <div class="card table-card party-directory-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Phone</th>
+                    <th>Address</th>
+                  </tr>
+                </thead>
+                <tbody id="partyDirectoryBody">
+                  <tr><td colspan="4" class="empty">No saved parties yet</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-head">
+              <div>
+                <span>Step 3</span>
                 <h2>Dealer Purchases</h2>
               </div>
             </div>
@@ -59,7 +98,7 @@ function loadPage(page) {
           <div class="section">
             <div class="section-head">
               <div>
-                <span>Step 3</span>
+                <span>Step 4</span>
                 <h2>Vendor Sales</h2>
               </div>
             </div>
@@ -73,7 +112,7 @@ function loadPage(page) {
           <div class="section">
             <div class="section-head">
               <div>
-                <span>Step 4</span>
+                <span>Step 5</span>
                 <h2>Payments</h2>
               </div>
             </div>
@@ -87,7 +126,7 @@ function loadPage(page) {
           <div class="section">
             <div class="section-head">
               <div>
-                <span>Step 5</span>
+                <span>Step 6</span>
                 <h2>Process Day</h2>
               </div>
             </div>
@@ -150,6 +189,9 @@ function loadPage(page) {
         }
         if (typeof initManualEntryRows === "function") {
           initManualEntryRows();
+        }
+        if (typeof initPartyDirectory === "function") {
+          initPartyDirectory();
         }
       }, 100);
     }

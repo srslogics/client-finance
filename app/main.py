@@ -24,6 +24,8 @@ Base.metadata.create_all(bind=engine)
 
 def ensure_database_schema():
     with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE parties ADD COLUMN IF NOT EXISTS phone VARCHAR"))
+        conn.execute(text("ALTER TABLE parties ADD COLUMN IF NOT EXISTS address VARCHAR"))
         conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS item_type VARCHAR"))
         conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS source_ref VARCHAR NOT NULL DEFAULT ''"))
         conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS quantity NUMERIC"))
@@ -664,11 +666,50 @@ def serialize_payment_receipt(receipt, balance_after=None):
     }
 
 
-def get_or_create_party(db: Session, party_name: str, party_type: str, seen_aliases: dict):
+def merge_party_type(existing_type: str | None, new_type: str | None):
+    existing = str(existing_type or "").strip().upper()
+    incoming = str(new_type or "").strip().upper()
+
+    if not existing:
+        return incoming or None
+    if not incoming or incoming == existing:
+        return existing
+    if "BOTH" in [existing, incoming]:
+        return "BOTH"
+    return "BOTH"
+
+
+def update_party_details(party, party_type: str | None = None, phone: str | None = None, address: str | None = None):
+    if party is None:
+        return
+
+    merged_type = merge_party_type(party.type, party_type)
+    if merged_type and merged_type != party.type:
+        party.type = merged_type
+
+    cleaned_phone = str(phone or "").strip()
+    cleaned_address = str(address or "").strip()
+    if cleaned_phone and not (party.phone or "").strip():
+        party.phone = cleaned_phone
+    if cleaned_address and not (party.address or "").strip():
+        party.address = cleaned_address
+
+
+def get_or_create_party(
+    db: Session,
+    party_name: str,
+    party_type: str,
+    seen_aliases: dict,
+    phone: str | None = None,
+    address: str | None = None
+):
     normalized = normalize_party_name(party_name)
 
     if normalized in seen_aliases:
-        return seen_aliases[normalized]
+        party_id = seen_aliases[normalized]
+        party = db.query(models.Party).filter_by(id=party_id).first()
+        update_party_details(party, party_type, phone, address)
+        return party_id
 
     alias = db.query(models.PartyAlias).filter_by(
         normalized_alias=normalized
@@ -676,11 +717,15 @@ def get_or_create_party(db: Session, party_name: str, party_type: str, seen_alia
 
     if alias:
         party_id = alias.party_id
+        party = db.query(models.Party).filter_by(id=party_id).first()
+        update_party_details(party, party_type, phone, address)
     else:
         party = models.Party(
             name=party_name,
             normalized_name=normalized,
-            type=party_type
+            type=party_type,
+            phone=str(phone or "").strip() or None,
+            address=str(address or "").strip() or None
         )
         db.add(party)
         db.flush()
@@ -696,6 +741,26 @@ def get_or_create_party(db: Session, party_name: str, party_type: str, seen_alia
 
     seen_aliases[normalized] = party_id
     return party_id
+
+
+def get_party_by_name(db: Session, party_name: str):
+    normalized = normalize_party_name(party_name)
+    if not normalized:
+        return None
+
+    alias = db.query(models.PartyAlias).filter(
+        models.PartyAlias.normalized_alias == normalized
+    ).first()
+    if alias:
+        return db.query(models.Party).filter_by(id=alias.party_id).first()
+
+    alias = db.query(models.PartyAlias).filter(
+        models.PartyAlias.normalized_alias.contains(normalized)
+    ).first()
+    if not alias:
+        return None
+
+    return db.query(models.Party).filter_by(id=alias.party_id).first()
 
 
 def normalize_payment_direction(value: str):
@@ -2148,10 +2213,111 @@ def search_party(name: str, db: Session = Depends(get_db)):
             {
                 "id": str(p.id),
                 "name": p.name,
-                "type": p.type
+                "type": p.type,
+                "phone": p.phone or "",
+                "address": p.address or ""
             }
             for p in parties
         ]
+    }
+
+
+@app.get("/party/profile")
+def get_party_profile(name: str, db: Session = Depends(get_db)):
+    if not name or len(name.strip()) < 2:
+        return {"error": "Invalid party name"}
+
+    party = get_party_by_name(db, name)
+    if not party:
+        return {"error": "Party not found"}
+
+    return {
+        "party": {
+            "id": str(party.id),
+            "name": party.name,
+            "type": party.type or "",
+            "phone": party.phone or "",
+            "address": party.address or ""
+        }
+    }
+
+
+@app.get("/party-directory")
+def list_party_directory(name: str | None = None, db: Session = Depends(get_db)):
+    query = db.query(models.Party)
+    if name and len(name.strip()) >= 2:
+        normalized = normalize_party_name(name)
+        query = query.filter(
+            or_(
+                models.Party.normalized_name.contains(normalized),
+                func.lower(models.Party.name).contains(name.strip().lower())
+            )
+        )
+
+    parties = query.order_by(models.Party.name.asc()).limit(50).all()
+    return {
+        "results": [
+            {
+                "id": str(p.id),
+                "name": p.name,
+                "type": p.type or "",
+                "phone": p.phone or "",
+                "address": p.address or ""
+            }
+            for p in parties
+        ]
+    }
+
+
+@app.post("/party-directory")
+def save_party_directory(payload: dict = Body(...), db: Session = Depends(get_db)):
+    rows = payload.get("rows") or []
+    if not rows:
+        return {"error": "Add at least one party"}
+
+    inserted = 0
+    updated = 0
+    skipped = 0
+    errors = []
+
+    for index, row in enumerate(rows, start=1):
+        try:
+            party_name = str(row.get("name") or row.get("party") or "").strip()
+            party_type = str(row.get("type") or "BOTH").strip().upper() or "BOTH"
+            phone = str(row.get("phone") or "").strip()
+            address = str(row.get("address") or "").strip()
+
+            if not party_name:
+                skipped += 1
+                row_error(errors, index, "Enter party name")
+                continue
+
+            party = get_party_by_name(db, party_name)
+            if party:
+                had_details = bool((party.phone or "").strip() or (party.address or "").strip())
+                update_party_details(party, party_type, phone, address)
+                if party.name != party_name:
+                    party.name = party_name
+                updated += 1 if had_details or phone or address or party_type else 0
+            else:
+                get_or_create_party(db, party_name, party_type, {}, phone=phone, address=address)
+                inserted += 1
+        except Exception as e:
+            skipped += 1
+            row_error(errors, index, str(e))
+
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        return {"error": "Saving party directory failed", "details": str(e)}
+
+    return {
+        "status": "success",
+        "rows_inserted": inserted,
+        "rows_updated": updated,
+        "rows_skipped": skipped,
+        "errors": errors
     }
 
 
@@ -2275,7 +2441,9 @@ def get_party_detail(name: str, db: Session = Depends(get_db)):
         "party": {
             "id": str(party.id),
             "name": party.name,
-            "type": party.type
+            "type": party.type,
+            "phone": party.phone or "",
+            "address": party.address or ""
         },
         "summary": build_party_summary(txns, balance),
         "ledger": ledger
@@ -3118,7 +3286,7 @@ def create_payment_receipt(payload: dict = Body(...), db: Session = Depends(get_
     payment_mode = str(payload.get("payment_mode") or "Cash").strip()
     notes = str(payload.get("notes") or "").strip()
 
-    party_id = get_or_create_party(db, party_name, "BOTH", {})
+    party_id = get_or_create_party(db, party_name, "BOTH", {}, phone=party_phone, address=party_address)
 
     receipt = models.PaymentReceipt(
         id=uuid4(),
@@ -3208,7 +3376,7 @@ def create_retail_bill(payload: dict = Body(...), db: Session = Depends(get_db))
 
     party_id = None
     if customer_name:
-        party_id = get_or_create_party(db, customer_name, "VENDOR", {})
+        party_id = get_or_create_party(db, customer_name, "VENDOR", {}, phone=customer_phone, address=customer_address)
 
     normalized_items = []
     total_quantity = Decimal("0")

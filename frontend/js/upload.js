@@ -200,6 +200,15 @@ function initManualEntryRows() {
   if (document.getElementById("openingStockEntryRows")?.children.length === 0) addOpeningStockEntryRow();
 }
 
+function initPartyDirectory() {
+  loadPartyDirectory();
+  const nameInput = document.getElementById("directoryPartyName");
+  if (!nameInput) return;
+
+  nameInput.addEventListener("change", () => hydrateDirectoryPartyForm(nameInput.value));
+  nameInput.addEventListener("blur", () => hydrateDirectoryPartyForm(nameInput.value));
+}
+
 function createManualRow(containerId, html) {
   const container = document.getElementById(containerId);
   if (!container) return;
@@ -393,6 +402,7 @@ function submitOpeningStockEntries() {
 
 let itemSuggestTimer = null;
 let manualPartySuggestTimer = null;
+let directoryPartySuggestTimer = null;
 
 async function suggestItems(input) {
   const suggestions = document.getElementById("itemSuggestions");
@@ -451,6 +461,131 @@ async function suggestManualParties(input) {
       suggestions.innerHTML = "";
     }
   }, 200);
+}
+
+async function suggestDirectoryParties(input) {
+  const suggestions = document.getElementById("directoryPartySuggestions");
+  const query = input?.value.trim() || "";
+
+  if (!suggestions) return;
+
+  clearTimeout(directoryPartySuggestTimer);
+
+  if (query.length < 2) {
+    suggestions.innerHTML = "";
+    return;
+  }
+
+  directoryPartySuggestTimer = setTimeout(async () => {
+    try {
+      const data = await optionalApiCall(`/party-directory?name=${encodeURIComponent(query)}`, { results: [] });
+      suggestions.innerHTML = "";
+      (data.results || []).forEach(party => {
+        const option = document.createElement("option");
+        option.value = party.name;
+        option.label = party.phone ? `${party.name} - ${party.phone}` : party.name;
+        suggestions.appendChild(option);
+      });
+    } catch (e) {
+      console.error(e);
+      suggestions.innerHTML = "";
+    }
+  }, 200);
+}
+
+async function hydrateDirectoryPartyForm(name) {
+  const query = String(name || "").trim();
+  if (query.length < 2) return;
+
+  try {
+    const data = await optionalApiCall(`/party/profile?name=${encodeURIComponent(query)}`, null, "GET", null, { cache: false });
+    const party = data?.party;
+    if (!party) return;
+
+    const phoneInput = document.getElementById("directoryPartyPhone");
+    const addressInput = document.getElementById("directoryPartyAddress");
+    const typeInput = document.getElementById("directoryPartyType");
+    if (phoneInput) phoneInput.value = party.phone || "";
+    if (addressInput) addressInput.value = party.address || "";
+    if (typeInput) typeInput.value = party.type || "BOTH";
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function savePartyDirectoryEntry() {
+  const name = document.getElementById("directoryPartyName")?.value.trim();
+  const phone = document.getElementById("directoryPartyPhone")?.value.trim() || "";
+  const address = document.getElementById("directoryPartyAddress")?.value.trim() || "";
+  const type = document.getElementById("directoryPartyType")?.value || "BOTH";
+
+  if (!name) {
+    showToast("Enter party name");
+    return;
+  }
+
+  toggleButtons(true);
+  setUploadStatus("info", "Saving party...");
+
+  try {
+    const data = await apiCall(
+      "/party-directory",
+      "POST",
+      JSON.stringify({ rows: [{ name, phone, address, type }] }),
+      { "Content-Type": "application/json" }
+    );
+
+    if (data.error) {
+      showToast(data.error);
+      setUploadStatus("error", data.error);
+      return;
+    }
+
+    showToast("Party saved");
+    setUploadStatus("success", `Party saved. ${data.rows_inserted || 0} added, ${data.rows_updated || 0} updated.`);
+    document.getElementById("directoryPartyName").value = "";
+    document.getElementById("directoryPartyPhone").value = "";
+    document.getElementById("directoryPartyAddress").value = "";
+    document.getElementById("directoryPartyType").value = "BOTH";
+    await loadPartyDirectory();
+  } catch (e) {
+    console.error(e);
+    showToast("Party save failed");
+    setUploadStatus("error", "Party save failed. Check the entered details and try again.");
+  } finally {
+    toggleButtons(false);
+  }
+}
+
+async function loadPartyDirectory() {
+  const body = document.getElementById("partyDirectoryBody");
+  if (!body) return;
+
+  body.innerHTML = `<tr><td colspan="4" class="empty">Loading saved parties...</td></tr>`;
+
+  try {
+    const data = await optionalApiCall("/party-directory", { results: [] }, "GET", null, { cache: false });
+    const results = data.results || [];
+    if (!results.length) {
+      body.innerHTML = `<tr><td colspan="4" class="empty">No saved parties yet</td></tr>`;
+      return;
+    }
+
+    body.innerHTML = "";
+    results.forEach(party => {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${escapeHtml(party.name || "")}</td>
+        <td>${escapeHtml(party.type || "BOTH")}</td>
+        <td>${escapeHtml(party.phone || "-")}</td>
+        <td>${escapeHtml(party.address || "-")}</td>
+      `;
+      body.appendChild(row);
+    });
+  } catch (e) {
+    console.error(e);
+    body.innerHTML = `<tr><td colspan="4" class="empty">Saved parties failed to load</td></tr>`;
+  }
 }
 
 function setUploadStatus(type, message, errors = []) {

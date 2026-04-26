@@ -13,6 +13,7 @@ class Party(Base):
     normalized_name = Column(String)
     type = Column(String)  # VENDOR / DEALER / BOTH
     phone = Column(String)
+    address = Column(String)
     created_at = Column(TIMESTAMP, server_default=func.now())
 
 

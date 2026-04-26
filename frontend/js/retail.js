@@ -94,6 +94,18 @@ function initRetailPage() {
     input.addEventListener("change", markPaymentReceiptDraftDirty);
   });
 
+  const retailCustomerName = document.getElementById("retailCustomerName");
+  if (retailCustomerName) {
+    retailCustomerName.addEventListener("change", () => hydrateRetailCustomerProfile(retailCustomerName.value));
+    retailCustomerName.addEventListener("blur", () => hydrateRetailCustomerProfile(retailCustomerName.value));
+  }
+
+  const paymentReceiptPartyName = document.getElementById("paymentReceiptPartyName");
+  if (paymentReceiptPartyName) {
+    paymentReceiptPartyName.addEventListener("change", () => hydratePaymentReceiptPartyProfile(paymentReceiptPartyName.value));
+    paymentReceiptPartyName.addEventListener("blur", () => hydratePaymentReceiptPartyProfile(paymentReceiptPartyName.value));
+  }
+
   attachRetailConnectivityListeners();
   addRegularRetailRow();
   addDressedRetailRow();
@@ -1444,6 +1456,7 @@ function suggestRetailCustomers() {
       (data.results || []).forEach(party => {
         const option = document.createElement("option");
         option.value = party.name;
+        option.label = party.phone ? `${party.name} - ${party.phone}` : party.name;
         suggestions.appendChild(option);
       });
     } catch (e) {
@@ -1472,6 +1485,7 @@ function suggestPaymentReceiptParties() {
       (data.results || []).forEach(party => {
         const option = document.createElement("option");
         option.value = party.name;
+        option.label = party.phone ? `${party.name} - ${party.phone}` : party.name;
         suggestions.appendChild(option);
       });
     } catch (e) {
@@ -1479,6 +1493,44 @@ function suggestPaymentReceiptParties() {
       suggestions.innerHTML = "";
     }
   }, 200);
+}
+
+async function hydrateRetailCustomerProfile(name) {
+  const query = String(name || "").trim();
+  if (query.length < 2) return;
+
+  try {
+    const data = await optionalApiCall(`/party/profile?name=${encodeURIComponent(query)}`, null, "GET", null, { cache: false });
+    const party = data?.party;
+    if (!party) return;
+
+    const phoneInput = document.getElementById("retailCustomerPhone");
+    const addressInput = document.getElementById("retailCustomerAddress");
+    if (phoneInput && !phoneInput.value.trim()) phoneInput.value = party.phone || "";
+    if (addressInput && !addressInput.value.trim()) addressInput.value = party.address || "";
+    renderRetailPreviewFromForm();
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function hydratePaymentReceiptPartyProfile(name) {
+  const query = String(name || "").trim();
+  if (query.length < 2) return;
+
+  try {
+    const data = await optionalApiCall(`/party/profile?name=${encodeURIComponent(query)}`, null, "GET", null, { cache: false });
+    const party = data?.party;
+    if (!party) return;
+
+    const phoneInput = document.getElementById("paymentReceiptPartyPhone");
+    const addressInput = document.getElementById("paymentReceiptPartyAddress");
+    if (phoneInput && !phoneInput.value.trim()) phoneInput.value = party.phone || "";
+    if (addressInput && !addressInput.value.trim()) addressInput.value = party.address || "";
+    renderPaymentReceiptPreviewFromForm();
+  } catch (e) {
+    console.error(e);
+  }
 }
 
 function formatBillQuantity(quantity, unit) {

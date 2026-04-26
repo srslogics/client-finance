@@ -1215,6 +1215,19 @@ input[type="file"] {
   align-self: stretch;
 }
 
+.directory-intro {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.party-directory-form {
+  grid-template-columns: minmax(180px, 1.2fr) minmax(150px, 1fr) minmax(180px, 1.2fr) minmax(150px, 0.9fr) auto;
+}
+
+.party-directory-table {
+  margin-top: 12px;
+}
+
 .table-card {
   overflow-x: auto;
   padding: 0;
