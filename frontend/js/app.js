@@ -447,8 +447,8 @@ function loadPage(page) {
 
                 <div class="report-actions retail-actions">
                   <button type="button" onclick="savePaymentReceipt()">Save Receipt</button>
+                  <button type="button" onclick="sendCurrentPaymentReceipt()">Send on WhatsApp</button>
                   <button type="button" onclick="printCurrentPaymentReceipt()">Print Payment Receipt</button>
-                  <button type="button" onclick="sendCurrentPaymentReceipt()">Send Payment Receipt</button>
                   <button type="button" onclick="resetPaymentReceiptForm()">New Payment Receipt</button>
                 </div>
               </div>
@@ -501,8 +501,8 @@ function loadPage(page) {
 
               <div class="report-actions retail-actions">
                 <button type="button" onclick="saveRetailBill()">Save Bill</button>
-                <button type="button" onclick="printCurrentRetailBill()">Print Latest Bill</button>
-                <button type="button" onclick="sendCurrentRetailBill()">Send Bill</button>
+                <button type="button" onclick="sendCurrentRetailBill()">Send on WhatsApp</button>
+                <button type="button" onclick="printCurrentRetailBill()">Print Bill</button>
               </div>
             </div>
 

@@ -1535,6 +1535,35 @@ function getThermalReceiptShareStyles() {
 
 async function renderReceiptMarkupToPngFile(markup, filenameBase) {
   const styles = getThermalReceiptShareStyles();
+  if (window.html2canvas) {
+    const host = document.createElement("div");
+    host.style.position = "fixed";
+    host.style.left = "-10000px";
+    host.style.top = "0";
+    host.style.width = "320px";
+    host.style.background = "#ffffff";
+    host.style.zIndex = "-1";
+    host.innerHTML = `<style>${styles}</style>${markup}`;
+    document.body.appendChild(host);
+
+    try {
+      const target = host.querySelector(".thermal-bill") || host;
+      const canvas = await window.html2canvas(target || host, {
+        backgroundColor: "#ffffff",
+        scale: 2,
+        useCORS: true,
+        logging: false
+      });
+      const pngBlob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+      if (!pngBlob) {
+        throw new Error("PNG render failed");
+      }
+      return new File([pngBlob], `${filenameBase}.png`, { type: "image/png" });
+    } finally {
+      host.remove();
+    }
+  }
+
   const width = 320;
   const height = 980;
   const svg = `
@@ -1547,7 +1576,6 @@ async function renderReceiptMarkupToPngFile(markup, filenameBase) {
       </foreignObject>
     </svg>
   `;
-
   const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
   const url = URL.createObjectURL(blob);
 
