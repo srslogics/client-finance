@@ -1145,6 +1145,35 @@ async function sendCurrentRetailBill() {
 
   const shareText = getRetailBillShareText(bill);
   const customerPhone = String(bill.customer_phone || "").replace(/\D/g, "");
+  const markup = getRetailReceiptMarkup(bill);
+
+  try {
+    const imageFile = await renderReceiptMarkupToPngFile(markup, `retail-bill-${bill.bill_number}`);
+    if (navigator.canShare && navigator.share && navigator.canShare({ files: [imageFile] })) {
+      await navigator.share({
+        title: `Retail Bill ${bill.bill_number}`,
+        text: `Retail bill ${bill.bill_number}`,
+        files: [imageFile]
+      });
+      showToast("Bill image shared");
+      return;
+    }
+
+    downloadFile(imageFile);
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(shareText);
+      } catch (e) {
+        console.error("Clipboard copy failed", e);
+      }
+    }
+    const whatsappTarget = customerPhone ? `https://wa.me/${customerPhone}` : `https://wa.me/`;
+    window.open(whatsappTarget, "_blank", "noopener,noreferrer");
+    showToast("Receipt image downloaded. Attach it in WhatsApp.");
+    return;
+  } catch (e) {
+    console.error("Image share failed", e);
+  }
 
   try {
     if (navigator.share) {
@@ -1249,6 +1278,35 @@ async function sendCurrentPaymentReceipt() {
 
   const shareText = getPaymentReceiptShareText(receipt);
   const partyPhone = String(receipt.party_phone || "").replace(/\D/g, "");
+  const markup = getPaymentReceiptMarkup(receipt);
+
+  try {
+    const imageFile = await renderReceiptMarkupToPngFile(markup, `payment-receipt-${receipt.receipt_number}`);
+    if (navigator.canShare && navigator.share && navigator.canShare({ files: [imageFile] })) {
+      await navigator.share({
+        title: `Payment Receipt ${receipt.receipt_number}`,
+        text: `Payment receipt ${receipt.receipt_number}`,
+        files: [imageFile]
+      });
+      showToast("Payment receipt image shared");
+      return;
+    }
+
+    downloadFile(imageFile);
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(shareText);
+      } catch (e) {
+        console.error("Clipboard copy failed", e);
+      }
+    }
+    const whatsappTarget = partyPhone ? `https://wa.me/${partyPhone}` : `https://wa.me/`;
+    window.open(whatsappTarget, "_blank", "noopener,noreferrer");
+    showToast("Receipt image downloaded. Attach it in WhatsApp.");
+    return;
+  } catch (e) {
+    console.error("Payment receipt image share failed", e);
+  }
 
   try {
     if (navigator.share) {
@@ -1434,6 +1492,96 @@ function formatBillRate(value) {
 
 function formatBillMoney(value) {
   return Number(value || 0).toFixed(2);
+}
+
+function getThermalReceiptShareStyles() {
+  return `
+    body { margin: 0; padding: 0; font-family: "Courier New", monospace; background: #ffffff; color: #111111; }
+    .thermal-bill { width: 280px; padding: 12px 10px 14px; background: #ffffff; color: #111111; font-family: "Courier New", monospace; }
+    .thermal-label { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-align: center; }
+    .thermal-center { text-align: center; }
+    .thermal-center h3 { margin: 3px 0 4px; font-size: 20px; line-height: 1.05; }
+    .thermal-center p, .thermal-customer p, .thermal-notes { margin: 2px 0; font-size: 11px; line-height: 1.25; }
+    .thermal-meta-grid, .thermal-customer, .thermal-summary { margin-top: 8px; }
+    .thermal-meta-row, .thermal-summary p { display: flex; justify-content: space-between; gap: 8px; margin: 2px 0; font-size: 11px; }
+    .thermal-rule { margin: 8px 0 4px; font-size: 10px; line-height: 1; color: #5f6b7a; text-align: center; }
+    .thermal-items-table { width: 100%; min-width: 0; max-width: 100%; table-layout: fixed; border-collapse: collapse; }
+    .thermal-items-table th, .thermal-items-table td { padding: 2px 0; border-bottom: none; font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: clip; }
+    .thermal-items-table th:nth-child(1), .thermal-items-table td:nth-child(1) { width: 6%; text-align: left; }
+    .thermal-items-table th:nth-child(2), .thermal-items-table td:nth-child(2) { width: 30%; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+    .thermal-items-table th:nth-child(3), .thermal-items-table td:nth-child(3),
+    .thermal-items-table th:nth-child(4), .thermal-items-table td:nth-child(4),
+    .thermal-items-table th:nth-child(5), .thermal-items-table td:nth-child(5),
+    .thermal-items-table th:nth-child(6), .thermal-items-table td:nth-child(6) { text-align: right; }
+    .thermal-items-table th:nth-child(3), .thermal-items-table td:nth-child(3) { width: 14%; }
+    .thermal-items-table th:nth-child(4), .thermal-items-table td:nth-child(4) { width: 12%; }
+    .thermal-items-table th:nth-child(5), .thermal-items-table td:nth-child(5) { width: 14%; }
+    .thermal-items-table th:nth-child(6), .thermal-items-table td:nth-child(6) { width: 24%; }
+    .thermal-subrow td { color: #5f6b7a; font-size: 9px; padding-top: 0; padding-bottom: 2px; }
+    .thermal-section-row td { padding-top: 5px; font-weight: 700; border-top: 1px dashed #a8adb7; }
+    .thermal-total { margin-top: 4px; padding-top: 4px; border-top: 1px dashed #8c98a8; font-weight: 800; }
+    .thermal-notes { padding-top: 6px; font-size: 10px; }
+    .thermal-footer { margin-top: 10px; padding-top: 8px; border-top: 1px dashed #8c98a8; text-align: center; }
+    .thermal-footer p { margin: 1px 0; font-size: 11px; }
+  `;
+}
+
+async function renderReceiptMarkupToPngFile(markup, filenameBase) {
+  const styles = getThermalReceiptShareStyles();
+  const width = 320;
+  const height = 980;
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+      <foreignObject width="100%" height="100%">
+        <div xmlns="http://www.w3.org/1999/xhtml" style="width:${width}px;background:#ffffff;">
+          <style>${styles}</style>
+          ${markup}
+        </div>
+      </foreignObject>
+    </svg>
+  `;
+
+  const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+
+  try {
+    const image = new Image();
+    image.decoding = "sync";
+    const imageLoaded = new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = reject;
+    });
+    image.src = url;
+    await imageLoaded;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width * 2;
+    canvas.height = height * 2;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    const pngBlob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+    if (!pngBlob) {
+      throw new Error("PNG render failed");
+    }
+
+    return new File([pngBlob], `${filenameBase}.png`, { type: "image/png" });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function downloadFile(file) {
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(file);
+  link.href = url;
+  link.download = file.name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 500);
 }
 
 function getRetailReceiptMarkup(bill) {
