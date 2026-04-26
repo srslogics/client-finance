@@ -402,8 +402,6 @@ function submitOpeningStockEntries() {
 
 let itemSuggestTimer = null;
 let manualPartySuggestTimer = null;
-let directoryPartySuggestTimer = null;
-
 async function suggestItems(input) {
   const suggestions = document.getElementById("itemSuggestions");
   const query = input?.value.trim() || "";
@@ -463,36 +461,6 @@ async function suggestManualParties(input) {
   }, 200);
 }
 
-async function suggestDirectoryParties(input) {
-  const suggestions = document.getElementById("directoryPartySuggestions");
-  const query = input?.value.trim() || "";
-
-  if (!suggestions) return;
-
-  clearTimeout(directoryPartySuggestTimer);
-
-  if (query.length < 2) {
-    suggestions.innerHTML = "";
-    return;
-  }
-
-  directoryPartySuggestTimer = setTimeout(async () => {
-    try {
-      const data = await optionalApiCall(`/party-directory?name=${encodeURIComponent(query)}`, { results: [] });
-      suggestions.innerHTML = "";
-      (data.results || []).forEach(party => {
-        const option = document.createElement("option");
-        option.value = party.name;
-        option.label = party.phone ? `${party.name} - ${party.phone}` : party.name;
-        suggestions.appendChild(option);
-      });
-    } catch (e) {
-      console.error(e);
-      suggestions.innerHTML = "";
-    }
-  }, 200);
-}
-
 async function hydrateDirectoryPartyForm(name) {
   const query = String(name || "").trim();
   if (query.length < 2) return;
@@ -511,6 +479,16 @@ async function hydrateDirectoryPartyForm(name) {
   } catch (e) {
     console.error(e);
   }
+}
+
+async function selectDirectoryParty(name) {
+  if (!name) {
+    resetDirectoryPartyForm(false);
+    return;
+  }
+  const nameInput = document.getElementById("directoryPartyName");
+  if (nameInput) nameInput.value = name;
+  await hydrateDirectoryPartyForm(name);
 }
 
 async function savePartyDirectoryEntry() {
@@ -543,10 +521,7 @@ async function savePartyDirectoryEntry() {
 
     showToast("Party saved");
     setUploadStatus("success", `Party saved. ${data.rows_inserted || 0} added, ${data.rows_updated || 0} updated.`);
-    document.getElementById("directoryPartyName").value = "";
-    document.getElementById("directoryPartyPhone").value = "";
-    document.getElementById("directoryPartyAddress").value = "";
-    document.getElementById("directoryPartyType").value = "BOTH";
+    resetDirectoryPartyForm();
     await loadPartyDirectory();
   } catch (e) {
     console.error(e);
@@ -559,13 +534,26 @@ async function savePartyDirectoryEntry() {
 
 async function loadPartyDirectory() {
   const body = document.getElementById("partyDirectoryBody");
+  const select = document.getElementById("directoryPartySelect");
   if (!body) return;
 
   body.innerHTML = `<tr><td colspan="4" class="empty">Loading saved parties...</td></tr>`;
+  if (select) {
+    select.innerHTML = `<option value="">Loading saved parties...</option>`;
+  }
 
   try {
     const data = await optionalApiCall("/party-directory", { results: [] }, "GET", null, { cache: false });
     const results = data.results || [];
+    if (select) {
+      select.innerHTML = `<option value="">Select saved party</option>`;
+      results.forEach(party => {
+        const option = document.createElement("option");
+        option.value = party.name || "";
+        option.textContent = party.phone ? `${party.name} - ${party.phone}` : party.name;
+        select.appendChild(option);
+      });
+    }
     if (!results.length) {
       body.innerHTML = `<tr><td colspan="4" class="empty">No saved parties yet</td></tr>`;
       return;
@@ -585,7 +573,24 @@ async function loadPartyDirectory() {
   } catch (e) {
     console.error(e);
     body.innerHTML = `<tr><td colspan="4" class="empty">Saved parties failed to load</td></tr>`;
+    if (select) {
+      select.innerHTML = `<option value="">Saved parties failed to load</option>`;
+    }
   }
+}
+
+function resetDirectoryPartyForm(resetSelect = true) {
+  const select = document.getElementById("directoryPartySelect");
+  const name = document.getElementById("directoryPartyName");
+  const phone = document.getElementById("directoryPartyPhone");
+  const address = document.getElementById("directoryPartyAddress");
+  const type = document.getElementById("directoryPartyType");
+
+  if (resetSelect && select) select.value = "";
+  if (name) name.value = "";
+  if (phone) phone.value = "";
+  if (address) address.value = "";
+  if (type) type.value = "BOTH";
 }
 
 function setUploadStatus(type, message, errors = []) {

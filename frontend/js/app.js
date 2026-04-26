@@ -41,7 +41,6 @@ function loadPage(page) {
           <div id="uploadStatus" class="notice" aria-live="polite"></div>
           <datalist id="itemSuggestions"></datalist>
           <datalist id="manualPartySuggestions"></datalist>
-          <datalist id="directoryPartySuggestions"></datalist>
 
           <div class="section">
             <div class="section-head">
@@ -54,7 +53,10 @@ function loadPage(page) {
               Save customer, vendor, or dealer name with phone number once. Billing and receipts can then fetch it automatically.
             </div>
             <div class="upload-box manual-entry-row party-directory-form">
-              <input type="text" id="directoryPartyName" placeholder="Name" list="directoryPartySuggestions" autocomplete="off" oninput="suggestDirectoryParties(this)">
+              <select id="directoryPartySelect" onchange="selectDirectoryParty(this.value)">
+                <option value="">Select saved party</option>
+              </select>
+              <input type="text" id="directoryPartyName" placeholder="Name">
               <input type="text" id="directoryPartyPhone" placeholder="Phone number">
               <input type="text" id="directoryPartyAddress" placeholder="Address (optional)">
               <select id="directoryPartyType">
