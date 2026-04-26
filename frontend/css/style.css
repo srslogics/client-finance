@@ -708,6 +708,32 @@ input[type="file"] {
   gap: 10px;
 }
 
+.retail-mode-switch {
+  display: inline-flex;
+  gap: 8px;
+  padding: 6px;
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.retail-mode-button {
+  min-height: 40px;
+  padding: 8px 18px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.retail-mode-button.active {
+  background: var(--brand);
+  color: #fff;
+  box-shadow: 0 10px 24px rgb(59 91 219 / 0.22);
+}
+
 .retail-billing-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -724,6 +750,10 @@ input[type="file"] {
 
 .retail-entry-grid {
   align-items: start;
+}
+
+.retail-billing-section {
+  margin-top: 16px;
 }
 
 .retail-shortcut-chip {
@@ -752,11 +782,42 @@ input[type="file"] {
 }
 
 .retail-shortcut-manager {
-  margin-top: 16px;
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: #fff;
+}
+
+.retail-setup-panel {
+  margin-top: 18px;
+}
+
+.retail-admin-toggle {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.retail-admin-toggle summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 16px 18px;
+  font-weight: 700;
+  color: var(--brand-dark);
+  background: #fafbfc;
+}
+
+.retail-admin-toggle summary::-webkit-details-marker {
+  display: none;
+}
+
+.retail-admin-toggle[open] summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.retail-admin-toggle > *:not(summary) {
+  padding: 16px 18px 18px;
 }
 
 .retail-shortcut-form {

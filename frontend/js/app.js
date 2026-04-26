@@ -360,23 +360,60 @@ function loadPage(page) {
                 <input type="text" id="retailCustomerAddress" placeholder="Address (optional)">
               </div>
 
-              <div class="retail-billing-grid">
-                <div class="retail-billing-panel">
-                  <div class="retail-shortcuts">
-                    <div class="retail-shortcuts-head">
-                      <span>Regular Shortcuts</span>
-                      <p>Tap an item to add it with its default rate.</p>
-                    </div>
-                    <div id="retailRegularShortcutItems" class="retail-shortcut-list"></div>
-                  </div>
+              <div class="retail-mode-switch" role="tablist" aria-label="Retail billing mode">
+                <button type="button" id="retailModeRegular" class="retail-mode-button active" onclick="setRetailBillingMode('regular')">Regular Billing</button>
+                <button type="button" id="retailModeDressed" class="retail-mode-button" onclick="setRetailBillingMode('dressed')">Dressed Billing</button>
+              </div>
 
-                  <div class="retail-shortcuts">
-                    <div class="retail-shortcuts-head">
-                      <span>Dressed Shortcuts</span>
-                      <p>Tap an item to add it to the dressed billing side with its default rate.</p>
-                    </div>
-                    <div id="retailDressedShortcutItems" class="retail-shortcut-list"></div>
+              <div id="retailRegularSection" class="retail-billing-panel retail-billing-section">
+                <div class="retail-shortcuts">
+                  <div class="retail-shortcuts-head">
+                    <span>Regular Shortcuts</span>
+                    <p>Tap an item to add it with its default rate.</p>
                   </div>
+                  <div id="retailRegularShortcutItems" class="retail-shortcut-list"></div>
+                </div>
+
+                <div class="retail-shortcuts-head">
+                  <span>Regular Billing</span>
+                  <p>Regular chicken billing with automatic rate fill from shortcuts.</p>
+                </div>
+                <div id="retailRegularRows" class="retail-items retail-items-horizontal"></div>
+                <div class="retail-item-actions">
+                  <button type="button" onclick="addRegularRetailRow()">Add Regular Item</button>
+                </div>
+              </div>
+
+              <div id="retailDressedSection" class="retail-billing-panel retail-billing-section" style="display:none;">
+                <div class="retail-shortcuts">
+                  <div class="retail-shortcuts-head">
+                    <span>Dressed Shortcuts</span>
+                    <p>Tap an item to add it to the dressed billing side with its default rate.</p>
+                  </div>
+                  <div id="retailDressedShortcutItems" class="retail-shortcut-list"></div>
+                </div>
+
+                <div class="retail-shortcuts">
+                  <div class="retail-shortcuts-head">
+                    <span>Available Dressed Stock</span>
+                    <p>As dressed bills are saved, the remaining dressed weight goes down automatically.</p>
+                  </div>
+                  <div id="dressedStockSummary" class="retail-stock-summary"></div>
+                </div>
+
+                <div class="retail-shortcuts-head">
+                  <span>Dressed Billing</span>
+                  <p>Bill dressed chicken separately. Amount and rate stay tied to dressed kg.</p>
+                </div>
+                <div id="retailDressedRows" class="retail-items retail-items-horizontal"></div>
+                <div class="retail-item-actions">
+                  <button type="button" onclick="addDressedRetailRow()">Add Dressed Item</button>
+                </div>
+              </div>
+
+              <div class="retail-billing-panel retail-setup-panel">
+                <details class="retail-admin-toggle">
+                  <summary>Setup Tools</summary>
 
                   <div class="retail-shortcut-manager">
                     <div class="retail-shortcuts-head">
@@ -398,12 +435,10 @@ function loadPage(page) {
                     </div>
                     <div id="retailShortcutManagerList" class="retail-shortcut-list retail-shortcut-list-managed"></div>
                   </div>
-                </div>
 
-                <div class="retail-billing-panel">
                   <div class="retail-shortcuts">
                     <div class="retail-shortcuts-head">
-                      <span>Dressed Stock</span>
+                      <span>Dressed Stock Entry</span>
                       <p>Enter live stock and available dressed weight. Bills deduct dressed weight automatically.</p>
                     </div>
                     <div id="dressedStockRows" class="retail-items"></div>
@@ -412,39 +447,7 @@ function loadPage(page) {
                       <button type="button" onclick="saveDressedStock()">Save Dressed Stock</button>
                     </div>
                   </div>
-
-                  <div class="retail-shortcuts">
-                    <div class="retail-shortcuts-head">
-                      <span>Available Dressed Stock</span>
-                      <p>As dressed bills are saved, the remaining dressed weight goes down automatically.</p>
-                    </div>
-                    <div id="dressedStockSummary" class="retail-stock-summary"></div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="retail-billing-grid retail-entry-grid">
-                <div class="retail-billing-panel">
-                  <div class="retail-shortcuts-head">
-                    <span>Regular Billing</span>
-                    <p>Regular chicken billing with automatic rate fill from shortcuts.</p>
-                  </div>
-                  <div id="retailRegularRows" class="retail-items retail-items-horizontal"></div>
-                  <div class="retail-item-actions">
-                    <button type="button" onclick="addRegularRetailRow()">Add Regular Item</button>
-                  </div>
-                </div>
-
-                <div class="retail-billing-panel">
-                  <div class="retail-shortcuts-head">
-                    <span>Dressed Billing</span>
-                    <p>Bill dressed chicken separately. Amount and rate stay tied to dressed kg.</p>
-                  </div>
-                  <div id="retailDressedRows" class="retail-items retail-items-horizontal"></div>
-                  <div class="retail-item-actions">
-                    <button type="button" onclick="addDressedRetailRow()">Add Dressed Item</button>
-                  </div>
-                </div>
+                </details>
               </div>
 
               <datalist id="retailItemSuggestions"></datalist>

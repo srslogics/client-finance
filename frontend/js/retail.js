@@ -23,6 +23,7 @@ let retailDraftDirty = false;
 let retailBillCompleted = false;
 let retailConnectivityListenersAttached = false;
 let dressedStockCache = [];
+let retailBillingMode = "regular";
 
 function initRetailPage() {
   const dateInput = document.getElementById("retailDate");
@@ -67,11 +68,25 @@ function initRetailPage() {
   renderShortcutManagerList();
   renderRetailOfflineBanner();
   syncRetailSettlementUi();
+  setRetailBillingMode("regular");
   refreshRetailBillNumber();
   renderRetailPreviewFromForm();
   loadRetailBills();
   loadDressedStock();
   syncPendingRetailBills(true);
+}
+
+function setRetailBillingMode(mode) {
+  retailBillingMode = mode === "dressed" ? "dressed" : "regular";
+  const regularButton = document.getElementById("retailModeRegular");
+  const dressedButton = document.getElementById("retailModeDressed");
+  const regularSection = document.getElementById("retailRegularSection");
+  const dressedSection = document.getElementById("retailDressedSection");
+
+  if (regularButton) regularButton.classList.toggle("active", retailBillingMode === "regular");
+  if (dressedButton) dressedButton.classList.toggle("active", retailBillingMode === "dressed");
+  if (regularSection) regularSection.style.display = retailBillingMode === "regular" ? "" : "none";
+  if (dressedSection) dressedSection.style.display = retailBillingMode === "dressed" ? "" : "none";
 }
 
 function renderRetailShortcuts() {
