@@ -16,14 +16,14 @@ function loadPage(page) {
 
     // --- Upload Page
     if (page === "upload") {
-      title.innerText = "Daily Uploads";
+      title.innerText = "Daily Entries";
 
       content.innerHTML = `
         <div class="container">
 
           <div class="page-intro">
             <span>Daily Operations</span>
-            <h2>Upload, validate, and process the day</h2>
+            <h2>Enter, review, and process the day directly in the app</h2>
           </div>
 
           <div class="section">
@@ -38,33 +38,35 @@ function loadPage(page) {
             </div>
           </div>
 
+          <div id="uploadStatus" class="notice" aria-live="polite"></div>
+          <datalist id="itemSuggestions"></datalist>
+          <datalist id="manualPartySuggestions"></datalist>
+
           <div class="section">
             <div class="section-head">
               <div>
                 <span>Step 2</span>
-                <h2>Download Daily Templates</h2>
+                <h2>Dealer Purchases</h2>
               </div>
             </div>
+            <div id="dealerEntryRows" class="stock-rows"></div>
             <div class="upload-box">
-              <button onclick="downloadTemplate('dealer')">Dealer Purchase</button>
-              <button onclick="downloadTemplate('vendor')">Vendor Sales</button>
-              <button onclick="downloadTemplate('payment')">Payment</button>
+              <button onclick="addDealerEntryRow()">Add Dealer Row</button>
+              <button onclick="submitDealerEntries()">Save Dealer Entries</button>
             </div>
           </div>
-
-          <div id="uploadStatus" class="notice" aria-live="polite"></div>
 
           <div class="section">
             <div class="section-head">
               <div>
                 <span>Step 3</span>
-                <h2>Dealer Purchase File</h2>
+                <h2>Vendor Sales</h2>
               </div>
             </div>
+            <div id="vendorEntryRows" class="stock-rows"></div>
             <div class="upload-box">
-              <input type="file" id="dealerFile" accept=".csv,.xls,.xlsx">
-              <button onclick="previewDealer()">Preview</button>
-              <button onclick="uploadDealer()">Upload</button>
+              <button onclick="addVendorEntryRow()">Add Vendor Row</button>
+              <button onclick="submitVendorEntries()">Save Vendor Entries</button>
             </div>
           </div>
 
@@ -72,13 +74,13 @@ function loadPage(page) {
             <div class="section-head">
               <div>
                 <span>Step 4</span>
-                <h2>Vendor Sales File</h2>
+                <h2>Payments</h2>
               </div>
             </div>
+            <div id="paymentEntryRows" class="stock-rows"></div>
             <div class="upload-box">
-              <input type="file" id="vendorFile" accept=".csv,.xls,.xlsx">
-              <button onclick="previewVendor()">Preview</button>
-              <button onclick="uploadVendor()">Upload</button>
+              <button onclick="addPaymentEntryRow()">Add Payment Row</button>
+              <button onclick="submitPaymentEntries()">Save Payments</button>
             </div>
           </div>
 
@@ -86,27 +88,12 @@ function loadPage(page) {
             <div class="section-head">
               <div>
                 <span>Step 5</span>
-                <h2>Payment File</h2>
-              </div>
-            </div>
-            <div class="upload-box">
-              <input type="file" id="paymentFile" accept=".csv,.xls,.xlsx">
-              <button onclick="previewPayment()">Preview</button>
-              <button onclick="uploadPayment()">Upload</button>
-            </div>
-          </div>
-
-          <div class="section">
-            <div class="section-head">
-              <div>
-                <span>Step 6</span>
                 <h2>Process Day</h2>
               </div>
             </div>
             <div class="upload-box process-day-controls">
               <input type="date" id="processDate">
             </div>
-            <datalist id="itemSuggestions"></datalist>
             <div id="actualStockRows" class="stock-rows">
               <div class="upload-box actual-stock-row">
                 <input type="text" class="actualItem" placeholder="Hen type" list="itemSuggestions" autocomplete="off" oninput="suggestItems(this)">
@@ -124,30 +111,22 @@ function loadPage(page) {
             <div class="section-head">
               <div>
                 <span>Initial Setup</span>
-                <h2>Opening Templates</h2>
+                <h2>Opening Balance</h2>
               </div>
             </div>
+            <div id="openingBalanceEntryRows" class="stock-rows"></div>
             <div class="upload-box">
-              <button onclick="downloadTemplate('opening-balance')">Opening Balance</button>
-              <button onclick="downloadTemplate('opening-stock')">Opening Stock</button>
-            </div>
-          </div>
-
-          <div class="section">
-            <h2>Opening Balance</h2>
-            <div class="upload-box">
-              <input type="file" id="openingBalanceFile" accept=".csv,.xls,.xlsx">
-              <button onclick="previewOpeningBalance()">Preview</button>
-              <button onclick="uploadOpeningBalance()">Upload</button>
+              <button onclick="addOpeningBalanceEntryRow()">Add Opening Balance Row</button>
+              <button onclick="submitOpeningBalanceEntries()">Save Opening Balances</button>
             </div>
           </div>
 
           <div class="section">
             <h2>Opening Stock</h2>
+            <div id="openingStockEntryRows" class="stock-rows"></div>
             <div class="upload-box">
-              <input type="file" id="openingStockFile" accept=".csv,.xls,.xlsx">
-              <button onclick="previewOpeningStock()">Preview</button>
-              <button onclick="uploadOpeningStock()">Upload</button>
+              <button onclick="addOpeningStockEntryRow()">Add Opening Stock Row</button>
+              <button onclick="submitOpeningStockEntries()">Save Opening Stock</button>
             </div>
           </div>
 
@@ -168,6 +147,9 @@ function loadPage(page) {
           processDate.addEventListener("change", () => {
             processDate.dataset.touched = "true";
           });
+        }
+        if (typeof initManualEntryRows === "function") {
+          initManualEntryRows();
         }
       }, 100);
     }

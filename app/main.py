@@ -677,6 +677,347 @@ def resolve_upload_date(row, date_col, fallback_date):
     return fallback_date
 
 
+@app.post("/entries/vendor")
+def create_vendor_entries(payload: dict = Body(...), input_date: str = None, db: Session = Depends(get_db)):
+    target_date = parse_input_date(input_date)
+    if not target_date:
+        return {"error": "Select working date"}
+
+    rows = payload.get("rows") or []
+    if not rows:
+        return {"error": "Add at least one vendor row"}
+
+    inserted = 0
+    skipped = 0
+    errors = []
+    seen_aliases = {}
+    seen_transactions = set()
+
+    for index, row in enumerate(rows, start=1):
+        try:
+            party_name = str(row.get("vendor") or row.get("party") or "").strip()
+            item_type = str(row.get("hen_type") or row.get("item_type") or "").strip()
+            category = str(row.get("category") or "").strip() or None
+            quantity = parse_decimal(row.get("nag", row.get("quantity")))
+            weight = parse_decimal(row.get("kgs", row.get("weight")))
+            rate = parse_decimal(row.get("rate_per_kg", row.get("rate")))
+
+            if not party_name or not item_type or weight <= 0 or rate <= 0 or quantity < 0:
+                skipped += 1
+                row_error(errors, index, "Enter vendor, hen type, valid NAG, kg, and rate")
+                continue
+
+            party_id = get_or_create_party(db, party_name, "VENDOR", seen_aliases)
+            txn_key = (target_date, party_id, float(weight), float(rate), "SALE", category, item_type)
+            existing_txn = db.query(models.Transaction).filter_by(
+                date=target_date,
+                party_id=party_id,
+                weight=float(weight),
+                rate=float(rate),
+                type="SALE",
+                category=category,
+                item_type=item_type
+            ).first()
+
+            if existing_txn or txn_key in seen_transactions:
+                skipped += 1
+                continue
+
+            db.add(models.Transaction(
+                date=target_date,
+                party_id=party_id,
+                type="SALE",
+                category=category,
+                item_type=item_type,
+                quantity=quantity if quantity > 0 else None,
+                weight=weight,
+                rate=rate,
+                amount=weight * rate,
+                payment_mode="NA"
+            ))
+            seen_transactions.add(txn_key)
+            inserted += 1
+        except Exception as e:
+            skipped += 1
+            row_error(errors, index, str(e))
+
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        return {"error": "Saving vendor entries failed", "details": str(e)}
+
+    return upload_result(inserted, skipped, errors)
+
+
+@app.post("/entries/dealer")
+def create_dealer_entries(payload: dict = Body(...), input_date: str = None, db: Session = Depends(get_db)):
+    target_date = parse_input_date(input_date)
+    if not target_date:
+        return {"error": "Select working date"}
+
+    rows = payload.get("rows") or []
+    if not rows:
+        return {"error": "Add at least one dealer row"}
+
+    inserted = 0
+    skipped = 0
+    errors = []
+    seen_aliases = {}
+    seen_transactions = set()
+
+    for index, row in enumerate(rows, start=1):
+        try:
+            party_name = str(row.get("dealer") or row.get("party") or "").strip()
+            category = str(row.get("category") or "").strip()
+            item_type = str(row.get("hen_type") or row.get("item_type") or "").strip()
+            quantity = parse_decimal(row.get("nag", row.get("quantity")))
+            weight = parse_decimal(row.get("kgs", row.get("weight")))
+            rate = parse_decimal(row.get("rate_per_kg", row.get("rate")))
+
+            if not party_name or not category or not item_type or weight <= 0 or rate <= 0 or quantity < 0:
+                skipped += 1
+                row_error(errors, index, "Enter dealer, category, hen type, valid NAG, kg, and rate")
+                continue
+
+            party_id = get_or_create_party(db, party_name, "DEALER", seen_aliases)
+            txn_key = (target_date, party_id, float(weight), float(rate), "PURCHASE", category, item_type)
+            existing_txn = db.query(models.Transaction).filter_by(
+                date=target_date,
+                party_id=party_id,
+                weight=float(weight),
+                rate=float(rate),
+                type="PURCHASE",
+                category=category,
+                item_type=item_type
+            ).first()
+
+            if existing_txn or txn_key in seen_transactions:
+                skipped += 1
+                continue
+
+            db.add(models.Transaction(
+                date=target_date,
+                party_id=party_id,
+                type="PURCHASE",
+                category=category,
+                item_type=item_type,
+                quantity=quantity if quantity > 0 else None,
+                weight=weight,
+                rate=rate,
+                amount=weight * rate,
+                payment_mode="NA"
+            ))
+            seen_transactions.add(txn_key)
+            inserted += 1
+        except Exception as e:
+            skipped += 1
+            row_error(errors, index, str(e))
+
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        return {"error": "Saving dealer entries failed", "details": str(e)}
+
+    return upload_result(inserted, skipped, errors)
+
+
+@app.post("/entries/payment")
+def create_payment_entries(payload: dict = Body(...), input_date: str = None, db: Session = Depends(get_db)):
+    target_date = parse_input_date(input_date)
+    if not target_date:
+        return {"error": "Select working date"}
+
+    rows = payload.get("rows") or []
+    if not rows:
+        return {"error": "Add at least one payment row"}
+
+    inserted = 0
+    skipped = 0
+    errors = []
+    seen_aliases = {}
+    seen_payments = set()
+
+    for index, row in enumerate(rows, start=1):
+        try:
+            party_name = str(row.get("party") or "").strip()
+            amount = parse_decimal(row.get("amount"))
+            payment_mode = str(row.get("payment_mode") or "NA").strip()
+            direction = normalize_payment_direction(row.get("direction"))
+
+            if not party_name or amount <= 0 or not direction:
+                skipped += 1
+                row_error(errors, index, "Enter party, amount, payment mode, and valid direction")
+                continue
+
+            party_id = get_or_create_party(db, party_name, "BOTH", seen_aliases)
+            payment_key = (target_date, party_id, float(amount), payment_mode, direction)
+            existing_payment = db.query(models.Transaction).filter_by(
+                date=target_date,
+                party_id=party_id,
+                type="PAYMENT",
+                amount=amount,
+                payment_mode=payment_mode,
+                category=direction
+            ).first()
+
+            if existing_payment or payment_key in seen_payments:
+                skipped += 1
+                continue
+
+            db.add(models.Transaction(
+                date=target_date,
+                party_id=party_id,
+                type="PAYMENT",
+                category=direction,
+                amount=amount,
+                payment_mode=payment_mode
+            ))
+            seen_payments.add(payment_key)
+            inserted += 1
+        except Exception as e:
+            skipped += 1
+            row_error(errors, index, str(e))
+
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        return {"error": "Saving payment entries failed", "details": str(e)}
+
+    return upload_result(inserted, skipped, errors)
+
+
+@app.post("/entries/opening-balance")
+def create_opening_balance_entries(payload: dict = Body(...), input_date: str = None, db: Session = Depends(get_db)):
+    target_date = parse_input_date(input_date)
+    if not target_date:
+        return {"error": "Select working date"}
+
+    rows = payload.get("rows") or []
+    if not rows:
+        return {"error": "Add at least one opening balance row"}
+
+    inserted = 0
+    skipped = 0
+    errors = []
+    seen_aliases = {}
+    seen_opening = set()
+
+    for index, row in enumerate(rows, start=1):
+        try:
+            party_name = str(row.get("party") or "").strip()
+            amount = parse_decimal(row.get("opening_balance", row.get("amount")))
+            balance_type = str(row.get("balance_type") or "").strip().upper()
+
+            if balance_type in ["RECEIVABLE", "RECEIVE", "CUSTOMER", "VENDOR"]:
+                balance_type = "RECEIVABLE"
+                party_type = "VENDOR"
+            elif balance_type in ["PAYABLE", "PAY", "SUPPLIER", "DEALER"]:
+                balance_type = "PAYABLE"
+                party_type = "DEALER"
+            else:
+                skipped += 1
+                row_error(errors, index, "Balance type must be RECEIVABLE or PAYABLE")
+                continue
+
+            if not party_name or amount < 0:
+                skipped += 1
+                row_error(errors, index, "Enter party and valid opening balance")
+                continue
+
+            party_id = get_or_create_party(db, party_name, party_type, seen_aliases)
+            opening_key = (target_date, party_id, balance_type)
+            existing_opening = db.query(models.Transaction).filter_by(
+                date=target_date,
+                party_id=party_id,
+                type="OPENING",
+                category=balance_type
+            ).first()
+            if existing_opening or opening_key in seen_opening:
+                skipped += 1
+                continue
+
+            db.add(models.Transaction(
+                date=target_date,
+                party_id=party_id,
+                type="OPENING",
+                category=balance_type,
+                amount=amount,
+                payment_mode="NA"
+            ))
+            seen_opening.add(opening_key)
+            inserted += 1
+        except Exception as e:
+            skipped += 1
+            row_error(errors, index, str(e))
+
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        return {"error": "Saving opening balances failed", "details": str(e)}
+
+    return upload_result(inserted, skipped, errors)
+
+
+@app.post("/entries/opening-stock")
+def create_opening_stock_entries(payload: dict = Body(...), input_date: str = None, db: Session = Depends(get_db)):
+    target_date = parse_input_date(input_date)
+    if not target_date:
+        return {"error": "Select working date"}
+
+    rows = payload.get("rows") or []
+    if not rows:
+        return {"error": "Add at least one opening stock row"}
+
+    inserted = 0
+    skipped = 0
+    errors = []
+    seen_stock = set()
+
+    for index, row in enumerate(rows, start=1):
+        try:
+            item_type = str(row.get("hen_type") or row.get("item_type") or "").strip()
+            opening_quantity = parse_decimal(row.get("opening_nag", row.get("nag", row.get("quantity"))))
+            opening_weight = parse_decimal(row.get("opening_kgs", row.get("kgs", row.get("weight"))))
+
+            if not item_type or opening_weight < 0 or opening_quantity < 0:
+                skipped += 1
+                row_error(errors, index, "Enter hen type, valid opening NAG, and opening kg")
+                continue
+
+            stock_key = (target_date, item_type)
+            existing_stock = db.query(models.ItemOpeningStock).filter_by(
+                date=target_date,
+                item_type=item_type
+            ).first()
+            if existing_stock or stock_key in seen_stock:
+                skipped += 1
+                continue
+
+            db.add(models.ItemOpeningStock(
+                date=target_date,
+                item_type=item_type,
+                opening_quantity=opening_quantity if opening_quantity > 0 else None,
+                opening_weight=opening_weight
+            ))
+            seen_stock.add(stock_key)
+            inserted += 1
+        except Exception as e:
+            skipped += 1
+            row_error(errors, index, str(e))
+
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        return {"error": "Saving opening stock failed", "details": str(e)}
+
+    return upload_result(inserted, skipped, errors)
+
+
 @app.post("/upload/vendor")
 def upload_vendor(file: UploadFile = File(...), preview: bool = False, input_date: str = None, db: Session = Depends(get_db)):
 

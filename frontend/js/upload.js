@@ -192,7 +192,207 @@ async function handleUpload(inputId, endpoint, label, preview = false) {
     button.closest(".actual-stock-row")?.remove();
   }
 
+function initManualEntryRows() {
+  if (document.getElementById("dealerEntryRows")?.children.length === 0) addDealerEntryRow();
+  if (document.getElementById("vendorEntryRows")?.children.length === 0) addVendorEntryRow();
+  if (document.getElementById("paymentEntryRows")?.children.length === 0) addPaymentEntryRow();
+  if (document.getElementById("openingBalanceEntryRows")?.children.length === 0) addOpeningBalanceEntryRow();
+  if (document.getElementById("openingStockEntryRows")?.children.length === 0) addOpeningStockEntryRow();
+}
+
+function createManualRow(containerId, html) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const row = document.createElement("div");
+  row.className = "upload-box manual-entry-row";
+  row.innerHTML = html;
+  container.appendChild(row);
+}
+
+function removeManualEntryRow(button) {
+  const row = button.closest(".manual-entry-row");
+  const container = row?.parentElement;
+  row?.remove();
+  if (container && container.children.length === 0) {
+    const addMap = {
+      dealerEntryRows: addDealerEntryRow,
+      vendorEntryRows: addVendorEntryRow,
+      paymentEntryRows: addPaymentEntryRow,
+      openingBalanceEntryRows: addOpeningBalanceEntryRow,
+      openingStockEntryRows: addOpeningStockEntryRow
+    };
+    addMap[container.id]?.();
+  }
+}
+
+function addDealerEntryRow() {
+  createManualRow("dealerEntryRows", `
+    <input type="text" class="dealerParty" placeholder="Dealer name" list="manualPartySuggestions" autocomplete="off" oninput="suggestManualParties(this)">
+    <input type="text" class="dealerCategory" placeholder="Category">
+    <input type="text" class="dealerItem" placeholder="Hen type" list="itemSuggestions" autocomplete="off" oninput="suggestItems(this)">
+    <input type="number" class="dealerNag" placeholder="NAG" min="0" step="1">
+    <input type="number" class="dealerWeight" placeholder="Kgs" min="0" step="0.01">
+    <input type="number" class="dealerRate" placeholder="Rate/kg" min="0" step="0.01">
+    <button type="button" onclick="removeManualEntryRow(this)">Remove</button>
+  `);
+}
+
+function addVendorEntryRow() {
+  createManualRow("vendorEntryRows", `
+    <input type="text" class="vendorParty" placeholder="Vendor name" list="manualPartySuggestions" autocomplete="off" oninput="suggestManualParties(this)">
+    <input type="text" class="vendorCategory" placeholder="Category (optional)">
+    <input type="text" class="vendorItem" placeholder="Hen type" list="itemSuggestions" autocomplete="off" oninput="suggestItems(this)">
+    <input type="number" class="vendorNag" placeholder="NAG" min="0" step="1">
+    <input type="number" class="vendorWeight" placeholder="Kgs" min="0" step="0.01">
+    <input type="number" class="vendorRate" placeholder="Rate/kg" min="0" step="0.01">
+    <button type="button" onclick="removeManualEntryRow(this)">Remove</button>
+  `);
+}
+
+function addPaymentEntryRow() {
+  createManualRow("paymentEntryRows", `
+    <input type="text" class="paymentParty" placeholder="Party name" list="manualPartySuggestions" autocomplete="off" oninput="suggestManualParties(this)">
+    <input type="number" class="paymentAmount" placeholder="Amount" min="0" step="0.01">
+    <select class="paymentMode">
+      <option value="Cash">Cash</option>
+      <option value="Online">Online</option>
+      <option value="Bank">Bank</option>
+      <option value="Credit">Credit</option>
+    </select>
+    <select class="paymentDirection">
+      <option value="RECEIVED">Received</option>
+      <option value="PAID">Paid</option>
+    </select>
+    <button type="button" onclick="removeManualEntryRow(this)">Remove</button>
+  `);
+}
+
+function addOpeningBalanceEntryRow() {
+  createManualRow("openingBalanceEntryRows", `
+    <input type="text" class="openingBalanceParty" placeholder="Party name" list="manualPartySuggestions" autocomplete="off" oninput="suggestManualParties(this)">
+    <input type="number" class="openingBalanceAmount" placeholder="Opening balance" min="0" step="0.01">
+    <select class="openingBalanceType">
+      <option value="RECEIVABLE">Receivable</option>
+      <option value="PAYABLE">Payable</option>
+    </select>
+    <button type="button" onclick="removeManualEntryRow(this)">Remove</button>
+  `);
+}
+
+function addOpeningStockEntryRow() {
+  createManualRow("openingStockEntryRows", `
+    <input type="text" class="openingStockItem" placeholder="Hen type" list="itemSuggestions" autocomplete="off" oninput="suggestItems(this)">
+    <input type="number" class="openingStockNag" placeholder="Opening NAG" min="0" step="1">
+    <input type="number" class="openingStockWeight" placeholder="Opening kgs" min="0" step="0.01">
+    <button type="button" onclick="removeManualEntryRow(this)">Remove</button>
+  `);
+}
+
+async function submitManualEntries(endpoint, rows, label) {
+  const workingDate = document.getElementById("uploadWorkingDate")?.value;
+  if (!workingDate) {
+    showToast("Select working date");
+    return;
+  }
+
+  if (!rows.length) {
+    showToast(`Add at least one ${label.toLowerCase()} row`);
+    return;
+  }
+
+  toggleButtons(true);
+  setUploadStatus("info", `Saving ${label.toLowerCase()}...`);
+
+  try {
+    const data = await apiCall(
+      `${endpoint}?input_date=${encodeURIComponent(workingDate)}`,
+      "POST",
+      JSON.stringify({ rows }),
+      { "Content-Type": "application/json" }
+    );
+
+    if (data.error) {
+      showToast(data.error);
+      setUploadStatus("error", data.error, data.errors || []);
+      return;
+    }
+
+    const skipped = data.rows_skipped ? `, ${data.rows_skipped} skipped` : "";
+    showToast(`${label}: ${data.rows_inserted} rows${skipped}`);
+    setUploadStatus(data.errors?.length ? "warning" : "success", `${label}: ${data.rows_inserted} rows${skipped}`, data.errors || []);
+  } catch (e) {
+    console.error(e);
+    showToast(`${label} failed`);
+    setUploadStatus("error", `${label} failed. Check the entered values and try again.`);
+  } finally {
+    toggleButtons(false);
+  }
+}
+
+function submitDealerEntries() {
+  const rows = Array.from(document.querySelectorAll("#dealerEntryRows .manual-entry-row"))
+    .map(row => ({
+      dealer: row.querySelector(".dealerParty")?.value.trim(),
+      category: row.querySelector(".dealerCategory")?.value.trim(),
+      hen_type: row.querySelector(".dealerItem")?.value.trim(),
+      nag: row.querySelector(".dealerNag")?.value,
+      kgs: row.querySelector(".dealerWeight")?.value,
+      rate_per_kg: row.querySelector(".dealerRate")?.value
+    }))
+    .filter(row => row.dealer || row.hen_type || row.kgs || row.rate_per_kg);
+  submitManualEntries("/entries/dealer", rows, "Dealer entries saved");
+}
+
+function submitVendorEntries() {
+  const rows = Array.from(document.querySelectorAll("#vendorEntryRows .manual-entry-row"))
+    .map(row => ({
+      vendor: row.querySelector(".vendorParty")?.value.trim(),
+      category: row.querySelector(".vendorCategory")?.value.trim(),
+      hen_type: row.querySelector(".vendorItem")?.value.trim(),
+      nag: row.querySelector(".vendorNag")?.value,
+      kgs: row.querySelector(".vendorWeight")?.value,
+      rate_per_kg: row.querySelector(".vendorRate")?.value
+    }))
+    .filter(row => row.vendor || row.hen_type || row.kgs || row.rate_per_kg);
+  submitManualEntries("/entries/vendor", rows, "Vendor entries saved");
+}
+
+function submitPaymentEntries() {
+  const rows = Array.from(document.querySelectorAll("#paymentEntryRows .manual-entry-row"))
+    .map(row => ({
+      party: row.querySelector(".paymentParty")?.value.trim(),
+      amount: row.querySelector(".paymentAmount")?.value,
+      payment_mode: row.querySelector(".paymentMode")?.value,
+      direction: row.querySelector(".paymentDirection")?.value
+    }))
+    .filter(row => row.party || row.amount);
+  submitManualEntries("/entries/payment", rows, "Payments saved");
+}
+
+function submitOpeningBalanceEntries() {
+  const rows = Array.from(document.querySelectorAll("#openingBalanceEntryRows .manual-entry-row"))
+    .map(row => ({
+      party: row.querySelector(".openingBalanceParty")?.value.trim(),
+      opening_balance: row.querySelector(".openingBalanceAmount")?.value,
+      balance_type: row.querySelector(".openingBalanceType")?.value
+    }))
+    .filter(row => row.party || row.opening_balance);
+  submitManualEntries("/entries/opening-balance", rows, "Opening balances saved");
+}
+
+function submitOpeningStockEntries() {
+  const rows = Array.from(document.querySelectorAll("#openingStockEntryRows .manual-entry-row"))
+    .map(row => ({
+      hen_type: row.querySelector(".openingStockItem")?.value.trim(),
+      opening_nag: row.querySelector(".openingStockNag")?.value,
+      opening_kgs: row.querySelector(".openingStockWeight")?.value
+    }))
+    .filter(row => row.hen_type || row.opening_kgs);
+  submitManualEntries("/entries/opening-stock", rows, "Opening stock saved");
+}
+
 let itemSuggestTimer = null;
+let manualPartySuggestTimer = null;
 
 async function suggestItems(input) {
   const suggestions = document.getElementById("itemSuggestions");
@@ -215,6 +415,35 @@ async function suggestItems(input) {
       (data.results || []).forEach(item => {
         const option = document.createElement("option");
         option.value = item;
+        suggestions.appendChild(option);
+      });
+    } catch (e) {
+      console.error(e);
+      suggestions.innerHTML = "";
+    }
+  }, 200);
+}
+
+async function suggestManualParties(input) {
+  const suggestions = document.getElementById("manualPartySuggestions");
+  const query = input?.value.trim() || "";
+
+  if (!suggestions) return;
+
+  clearTimeout(manualPartySuggestTimer);
+
+  if (query.length < 2) {
+    suggestions.innerHTML = "";
+    return;
+  }
+
+  manualPartySuggestTimer = setTimeout(async () => {
+    try {
+      const data = await optionalApiCall(`/party/search?name=${encodeURIComponent(query)}`, { results: [] });
+      suggestions.innerHTML = "";
+      (data.results || []).forEach(party => {
+        const option = document.createElement("option");
+        option.value = party.name;
         suggestions.appendChild(option);
       });
     } catch (e) {

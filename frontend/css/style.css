@@ -1037,6 +1037,16 @@ input[type="file"] {
   background: var(--surface-soft);
 }
 
+.manual-entry-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  align-items: stretch;
+}
+
+.manual-entry-row button {
+  align-self: stretch;
+}
+
 .table-card {
   overflow-x: auto;
   padding: 0;
