@@ -4106,6 +4106,43 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
                 "label": "Leakage %",
                 "value": float(leakage_percent),
                 "suffix": "%"
+            },
+            {
+                "label": "Sell Through",
+                "value": float(sell_through),
+                "suffix": "%"
+            },
+            {
+                "label": "Sale-Buy Spread",
+                "value": float(realized_spread),
+                "suffix": "/kg"
+            },
+            {
+                "label": "Retail Mix",
+                "value": float(retail_mix_percent),
+                "suffix": "%"
+            },
+            {
+                "label": "Retail Credit",
+                "value": float(retail_credit_outstanding),
+                "prefix": "Rs "
+            },
+            {
+                "label": "Dressed Sale",
+                "value": float(dressed_sales_weight),
+                "suffix": " kg",
+                "subvalue": f"Rs {float(dressed_sales_amount):,.2f}" if dressed_sales_amount > 0 else None
+            },
+            {
+                "label": "Stock Cover",
+                "value": float(stock_coverage_days),
+                "suffix": " days"
+            },
+            {
+                "label": "Gross Profit",
+                "value": float((gross_profit / total_sales_amount * Decimal('100')) if total_sales_amount > 0 else Decimal('0')),
+                "suffix": "%",
+                "subvalue": f"Rs {float(gross_profit):,.2f}"
             }
         ],
         "special_sections": {
