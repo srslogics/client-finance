@@ -6,14 +6,15 @@ const RETAIL_SHOP_PROFILE = {
 };
 
 const RETAIL_SHORTCUT_ITEMS = [
-  "CB",
-  "BB",
-  "COCREL",
-  "DESI",
-  "LEGOAN",
-  "LOOS"
+  { name: "CB", rate: 0, line_type: "STANDARD", unit: "KGS" },
+  { name: "BB", rate: 0, line_type: "STANDARD", unit: "KGS" },
+  { name: "COCREL", rate: 0, line_type: "STANDARD", unit: "KGS" },
+  { name: "DESI", rate: 0, line_type: "STANDARD", unit: "KGS" },
+  { name: "LEGOAN", rate: 0, line_type: "STANDARD", unit: "KGS" },
+  { name: "LOOS", rate: 0, line_type: "STANDARD", unit: "KGS" }
 ];
 const RETAIL_PENDING_STORAGE_KEY = "stockpilot.retail.pending";
+const RETAIL_SHORTCUT_STORAGE_KEY = "stockpilot.retail.shortcuts";
 
 let retailItemSuggestTimer = null;
 let retailCustomerSuggestTimer = null;
@@ -21,6 +22,7 @@ let currentRetailBill = null;
 let retailDraftDirty = false;
 let retailBillCompleted = false;
 let retailConnectivityListenersAttached = false;
+let dressedStockCache = [];
 
 function initRetailPage() {
   const dateInput = document.getElementById("retailDate");
@@ -30,6 +32,7 @@ function initRetailPage() {
   dateInput.addEventListener("change", async () => {
     await refreshRetailBillNumber();
     loadRetailBills();
+    loadDressedStock();
   });
 
   const formIds = [
@@ -57,28 +60,109 @@ function initRetailPage() {
   }
 
   attachRetailConnectivityListeners();
-  addRetailItemRow();
+  addRegularRetailRow();
+  addDressedRetailRow();
+  addDressedStockRow();
   renderRetailShortcuts();
+  renderShortcutManagerList();
   renderRetailOfflineBanner();
   syncRetailSettlementUi();
   refreshRetailBillNumber();
   renderRetailPreviewFromForm();
   loadRetailBills();
+  loadDressedStock();
   syncPendingRetailBills(true);
 }
 
 function renderRetailShortcuts() {
-  const container = document.getElementById("retailShortcutItems");
-  if (!container) return;
+  const regularContainer = document.getElementById("retailRegularShortcutItems");
+  const dressedContainer = document.getElementById("retailDressedShortcutItems");
+  if (!regularContainer || !dressedContainer) return;
 
-  container.innerHTML = "";
-  RETAIL_SHORTCUT_ITEMS.forEach(itemName => {
+  regularContainer.innerHTML = "";
+  dressedContainer.innerHTML = "";
+  getRetailShortcuts().forEach(shortcut => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "retail-shortcut-chip";
-    button.innerText = itemName;
-    button.onclick = () => addShortcutRetailItem(itemName);
-    container.appendChild(button);
+    button.innerText = `${shortcut.name}${Number(shortcut.rate || 0) > 0 ? ` - Rs ${Number(shortcut.rate).toFixed(2)}` : ""}`;
+    button.onclick = () => addShortcutRetailItem(shortcut);
+    if ((shortcut.line_type || "STANDARD").toUpperCase() === "DRESSED") {
+      dressedContainer.appendChild(button);
+    } else {
+      regularContainer.appendChild(button);
+    }
+  });
+
+  if (!regularContainer.children.length) {
+    regularContainer.innerHTML = `<span class="retail-shortcut-empty">No regular shortcuts yet.</span>`;
+  }
+  if (!dressedContainer.children.length) {
+    dressedContainer.innerHTML = `<span class="retail-shortcut-empty">No dressed shortcuts yet.</span>`;
+  }
+}
+
+function getRetailShortcuts() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(RETAIL_SHORTCUT_STORAGE_KEY) || "null");
+    if (Array.isArray(saved) && saved.length) {
+      return saved;
+    }
+  } catch (e) {
+    console.error("Failed to load shortcuts", e);
+  }
+  return RETAIL_SHORTCUT_ITEMS;
+}
+
+function setRetailShortcuts(shortcuts) {
+  localStorage.setItem(RETAIL_SHORTCUT_STORAGE_KEY, JSON.stringify(shortcuts));
+}
+
+function saveRetailShortcut() {
+  const name = document.getElementById("shortcutName")?.value.trim();
+  const rate = Number(document.getElementById("shortcutRate")?.value || 0);
+  const lineType = document.getElementById("shortcutLineType")?.value || "STANDARD";
+  const unit = document.getElementById("shortcutUnit")?.value || "KGS";
+
+  if (!name) {
+    showToast("Enter shortcut item name");
+    return;
+  }
+
+  const shortcuts = getRetailShortcuts().filter(item => item.name.toLowerCase() !== name.toLowerCase());
+  shortcuts.push({ name, rate, line_type: lineType, unit });
+  shortcuts.sort((a, b) => a.name.localeCompare(b.name));
+  setRetailShortcuts(shortcuts);
+  renderRetailShortcuts();
+  renderShortcutManagerList();
+  document.getElementById("shortcutName").value = "";
+  document.getElementById("shortcutRate").value = "";
+  showToast("Shortcut saved");
+}
+
+function removeRetailShortcut(name) {
+  const shortcuts = getRetailShortcuts().filter(item => item.name !== name);
+  setRetailShortcuts(shortcuts);
+  renderRetailShortcuts();
+  renderShortcutManagerList();
+}
+
+function renderShortcutManagerList() {
+  const container = document.getElementById("retailShortcutManagerList");
+  if (!container) return;
+  container.innerHTML = "";
+  getRetailShortcuts().forEach(shortcut => {
+    const chip = document.createElement("div");
+    chip.className = "retail-shortcut-chip retail-shortcut-chip-managed";
+    const text = document.createElement("span");
+    text.innerText = `${shortcut.name} | ${shortcut.line_type || "STANDARD"} | ${shortcut.unit || "KGS"} | Rs ${Number(shortcut.rate || 0).toFixed(2)}`;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.innerText = "Remove";
+    button.onclick = () => removeRetailShortcut(shortcut.name);
+    chip.appendChild(text);
+    chip.appendChild(button);
+    container.appendChild(chip);
   });
 }
 
@@ -109,18 +193,24 @@ async function refreshRetailBillNumber() {
   }
 }
 
-function addRetailItemRow(item = null) {
-  const container = document.getElementById("retailItemRows");
+function addRegularRetailRow(item = null) {
+  addRetailItemRow(item, "STANDARD");
+}
+
+function addDressedRetailRow(item = null) {
+  addRetailItemRow(item, "DRESSED");
+}
+
+function addRetailItemRow(item = null, defaultLineType = "STANDARD") {
+  const container = document.getElementById(defaultLineType === "DRESSED" ? "retailDressedRows" : "retailRegularRows");
   if (!container) return;
+  const lineType = (item?.line_type || defaultLineType || "STANDARD").toUpperCase();
 
   const row = document.createElement("div");
   row.className = "retail-item-row";
+  row.dataset.lineType = lineType;
   row.innerHTML = `
     <input type="text" class="retailItemName" placeholder="Item name" list="retailItemSuggestions" autocomplete="off" oninput="suggestRetailItems(this); recalcRetailLine(this)">
-    <select class="retailLineType" onchange="handleRetailLineTypeChange(this)">
-      <option value="STANDARD">Regular</option>
-      <option value="DRESSED">Dressed Chicken</option>
-    </select>
     <input type="number" class="retailQty" placeholder="NAG" min="0" step="0.01" oninput="recalcRetailLine(this)">
     <select class="retailUnit" onchange="recalcRetailLine(this)">
       <option value="KGS">KGS</option>
@@ -135,7 +225,6 @@ function addRetailItemRow(item = null) {
 
   if (item) {
     row.querySelector(".retailItemName").value = item.item_name || "";
-    row.querySelector(".retailLineType").value = (item.line_type || "STANDARD").toUpperCase();
     row.querySelector(".retailQty").value = item.nag || item.quantity || "";
     row.querySelector(".retailUnit").value = item.unit || "KGS";
     row.querySelector(".retailWeight").value = item.weight || "";
@@ -149,40 +238,55 @@ function addRetailItemRow(item = null) {
   renderRetailPreviewFromForm();
 }
 
-function addShortcutRetailItem(itemName) {
-  const rows = Array.from(document.querySelectorAll(".retail-item-row"));
+function addShortcutRetailItem(shortcut) {
+  const lineType = (shortcut.line_type || "STANDARD").toUpperCase();
+  const rows = Array.from(document.querySelectorAll(lineType === "DRESSED" ? "#retailDressedRows .retail-item-row" : "#retailRegularRows .retail-item-row"));
   let targetRow = rows.find(row => !row.querySelector(".retailItemName")?.value.trim());
 
   if (!targetRow) {
-    addRetailItemRow();
-    targetRow = Array.from(document.querySelectorAll(".retail-item-row")).at(-1);
+    addRetailItemRow(null, lineType);
+    targetRow = Array.from(document.querySelectorAll(lineType === "DRESSED" ? "#retailDressedRows .retail-item-row" : "#retailRegularRows .retail-item-row")).at(-1);
   }
 
   const itemInput = targetRow?.querySelector(".retailItemName");
   const qtyInput = targetRow?.querySelector(".retailQty");
   const unitSelect = targetRow?.querySelector(".retailUnit");
+  const rateInput = targetRow?.querySelector(".retailRate");
 
-  if (!itemInput || !qtyInput || !unitSelect) return;
+  if (!itemInput || !qtyInput || !unitSelect || !rateInput) return;
 
-  itemInput.value = itemName;
+  itemInput.value = shortcut.name;
+  targetRow.dataset.lineType = lineType;
   if (!qtyInput.value) qtyInput.value = "1";
-  if (!unitSelect.value) unitSelect.value = "KGS";
+  unitSelect.value = shortcut.unit || "KGS";
+  if (Number(shortcut.rate || 0) > 0) {
+    rateInput.value = Number(shortcut.rate).toFixed(2);
+  }
 
   retailDraftDirty = true;
   retailBillCompleted = false;
+  syncRetailLineUi(targetRow);
   recalcRetailLine(itemInput);
 }
 
 function removeRetailItemRow(button) {
-  const rows = document.querySelectorAll(".retail-item-row");
+  const row = button.closest(".retail-item-row");
+  if (!row) return;
+
+  if (row.classList.contains("dressed-stock-row")) {
+    const container = row.parentElement;
+    row.remove();
+    if (container && container.children.length === 0) addDressedStockRow();
+    return;
+  }
+
+  const container = row.parentElement;
+  const rows = container ? container.querySelectorAll(".retail-item-row") : [];
   if (rows.length <= 1) {
-    const row = button.closest(".retail-item-row");
     row?.querySelectorAll("input").forEach(input => {
       input.value = "";
     });
-    const lineTypeSelect = row?.querySelector(".retailLineType");
     const unitSelect = row?.querySelector(".retailUnit");
-    if (lineTypeSelect) lineTypeSelect.value = "STANDARD";
     if (unitSelect) unitSelect.value = "KGS";
     syncRetailLineUi(row);
     retailDraftDirty = true;
@@ -191,7 +295,7 @@ function removeRetailItemRow(button) {
     return;
   }
 
-  button.closest(".retail-item-row")?.remove();
+  row.remove();
   retailDraftDirty = true;
   retailBillCompleted = false;
   renderRetailPreviewFromForm();
@@ -201,14 +305,15 @@ function recalcRetailLine(source) {
   const row = source?.closest(".retail-item-row");
   if (!row) return;
 
-  const lineTypeInput = row.querySelector(".retailLineType");
+  applyRetailDefaults(row);
+
   const qtyInput = row.querySelector(".retailQty");
   const unitInput = row.querySelector(".retailUnit");
   const weightInput = row.querySelector(".retailWeight");
   const rateInput = row.querySelector(".retailRate");
   const amountInput = row.querySelector(".retailAmount");
 
-  const lineType = lineTypeInput?.value || "STANDARD";
+  const lineType = getRetailRowLineType(row);
   const quantity = Number(qtyInput?.value || 0);
   const unit = unitInput?.value || "KGS";
   let weight = Number(weightInput?.value || 0);
@@ -246,11 +351,46 @@ function recalcRetailLine(source) {
   renderRetailPreviewFromForm();
 }
 
+function getRetailShortcutByName(name) {
+  const normalized = String(name || "").trim().toLowerCase();
+  return getRetailShortcuts().find(item => String(item.name || "").trim().toLowerCase() === normalized) || null;
+}
+
+function getDressedStockByName(name) {
+  const normalized = String(name || "").trim().toLowerCase();
+  return dressedStockCache.find(item => String(item.item_name || "").trim().toLowerCase() === normalized) || null;
+}
+
+function applyRetailDefaults(row) {
+  const itemName = row?.querySelector(".retailItemName")?.value.trim();
+  const lineType = getRetailRowLineType(row);
+  const rateInput = row?.querySelector(".retailRate");
+  const unitInput = row?.querySelector(".retailUnit");
+  if (!itemName || !rateInput || !unitInput) return;
+
+  const shortcut = getRetailShortcutByName(itemName);
+  if (shortcut) {
+    if (!unitInput.value || unitInput.value === "KGS") {
+      unitInput.value = shortcut.unit || unitInput.value || "KGS";
+    }
+    if (Number(rateInput.value || 0) <= 0 && Number(shortcut.rate || 0) > 0) {
+      rateInput.value = Number(shortcut.rate).toFixed(2);
+    }
+  }
+
+  if (lineType === "DRESSED") {
+    const dressedItem = getDressedStockByName(itemName);
+    if (dressedItem && Number(rateInput.value || 0) <= 0 && Number(dressedItem.default_rate || 0) > 0) {
+      rateInput.value = Number(dressedItem.default_rate).toFixed(2);
+    }
+  }
+}
+
 function collectRetailItemsFromForm() {
-  return Array.from(document.querySelectorAll(".retail-item-row"))
+  return Array.from(document.querySelectorAll("#retailRegularRows .retail-item-row, #retailDressedRows .retail-item-row"))
     .map(row => ({
       item_name: row.querySelector(".retailItemName")?.value.trim(),
-      line_type: row.querySelector(".retailLineType")?.value || "STANDARD",
+      line_type: getRetailRowLineType(row),
       nag: Number(row.querySelector(".retailQty")?.value || 0),
       quantity: Number(row.querySelector(".retailQty")?.value || 0),
       unit: row.querySelector(".retailUnit")?.value || "KGS",
@@ -352,8 +492,9 @@ function syncRetailSettlementUi() {
 }
 
 function populateRetailFormFromBill(bill) {
-  const rows = document.getElementById("retailItemRows");
-  if (!rows || !bill) return;
+  const regularRows = document.getElementById("retailRegularRows");
+  const dressedRows = document.getElementById("retailDressedRows");
+  if (!regularRows || !dressedRows || !bill) return;
 
   document.getElementById("retailDate").value = bill.date || formatDateInput(new Date());
   document.getElementById("retailBillNumber").value = bill.bill_number || "";
@@ -375,11 +516,15 @@ function populateRetailFormFromBill(bill) {
     document.getElementById("retailPaidAmount").value = bill.paid_amount ?? "";
   }
 
-  rows.innerHTML = "";
-  (bill.items || []).forEach(item => addRetailItemRow(item));
+  regularRows.innerHTML = "";
+  dressedRows.innerHTML = "";
+  (bill.items || []).forEach(item => addRetailItemRow(item, (item.line_type || "STANDARD").toUpperCase()));
 
-  if (!(bill.items || []).length) {
-    addRetailItemRow();
+  if (!(bill.items || []).some(item => (item.line_type || "STANDARD").toUpperCase() === "STANDARD")) {
+    addRegularRetailRow();
+  }
+  if (!(bill.items || []).some(item => (item.line_type || "STANDARD").toUpperCase() === "DRESSED")) {
+    addDressedRetailRow();
   }
 
   currentRetailBill = bill;
@@ -443,6 +588,7 @@ async function saveRetailBill() {
     renderRetailPreview(currentRetailBill);
     showToast(`Retail bill ${currentRetailBill.bill_number} saved`);
     await loadRetailBills();
+    await loadDressedStock();
     return currentRetailBill;
   } catch (e) {
     console.error(e);
@@ -510,6 +656,97 @@ async function loadRetailBills() {
   } catch (e) {
     console.error(e);
     body.innerHTML = `<tr><td colspan="8" class="empty">Retail bills failed to load</td></tr>`;
+  }
+}
+
+function addDressedStockRow(entry = null) {
+  const container = document.getElementById("dressedStockRows");
+  if (!container) return;
+
+  const row = document.createElement("div");
+  row.className = "retail-item-row dressed-stock-row";
+  row.innerHTML = `
+    <input type="text" class="dressedStockItem" placeholder="Item name" list="retailItemSuggestions" autocomplete="off" oninput="suggestRetailItems(this)">
+    <input type="number" class="dressedLiveNag" placeholder="Live NAG" min="0" step="1">
+    <input type="number" class="dressedLiveWeight" placeholder="Live weight (kg)" min="0" step="0.001">
+    <input type="number" class="dressedYieldWeight" placeholder="Dressed weight (kg)" min="0" step="0.001">
+    <input type="number" class="dressedDefaultRate" placeholder="Default rate" min="0" step="0.01">
+    <button type="button" onclick="removeRetailItemRow(this)">Remove</button>
+  `;
+  container.appendChild(row);
+
+  if (entry) {
+    row.querySelector(".dressedStockItem").value = entry.item_name || "";
+    row.querySelector(".dressedLiveNag").value = entry.live_quantity || "";
+    row.querySelector(".dressedLiveWeight").value = entry.live_weight || "";
+    row.querySelector(".dressedYieldWeight").value = entry.dressed_weight || "";
+    row.querySelector(".dressedDefaultRate").value = entry.default_rate || "";
+  }
+}
+
+async function saveDressedStock() {
+  const rows = Array.from(document.querySelectorAll("#dressedStockRows .dressed-stock-row"))
+    .map(row => ({
+      item_name: row.querySelector(".dressedStockItem")?.value.trim(),
+      live_quantity: row.querySelector(".dressedLiveNag")?.value,
+      live_weight: row.querySelector(".dressedLiveWeight")?.value,
+      dressed_weight: row.querySelector(".dressedYieldWeight")?.value,
+      default_rate: row.querySelector(".dressedDefaultRate")?.value
+    }))
+    .filter(row => row.item_name || row.dressed_weight);
+
+  const date = document.getElementById("retailDate")?.value;
+  if (!date) {
+    showToast("Select bill date");
+    return;
+  }
+  if (!rows.length) {
+    showToast("Add at least one dressed stock row");
+    return;
+  }
+
+  try {
+    const data = await apiCall(`/dressed-stock?input_date=${encodeURIComponent(date)}`, "POST", JSON.stringify({ rows }), { "Content-Type": "application/json" });
+    if (data.error) {
+      showToast(data.error);
+      return;
+    }
+    showToast(`Dressed stock saved: ${data.rows_inserted} rows`);
+    const container = document.getElementById("dressedStockRows");
+    if (container) container.innerHTML = "";
+    addDressedStockRow();
+    await loadDressedStock();
+  } catch (e) {
+    console.error(e);
+    showToast("Dressed stock save failed");
+  }
+}
+
+async function loadDressedStock() {
+  const date = document.getElementById("retailDate")?.value;
+  const summary = document.getElementById("dressedStockSummary");
+  if (!summary || !date) return;
+
+  try {
+    const data = await optionalApiCall(`/dressed-stock?date=${encodeURIComponent(date)}`, { entries: [], available_items: [] }, "GET", null, { cache: false });
+    dressedStockCache = data.available_items || [];
+    if (!dressedStockCache.length) {
+      summary.innerHTML = `<div class="thermal-empty">No dressed stock saved for this date yet.</div>`;
+      return;
+    }
+
+    summary.innerHTML = dressedStockCache.map(item => `
+      <div class="retail-stock-card">
+        <strong>${escapeHtml(item.item_name)}</strong>
+        <span>Live NAG: ${formatBillNag(item.live_quantity || 0)}</span>
+        <span>Live weight: ${Number(item.live_weight || 0).toFixed(3)} kg</span>
+        <span>Available dressed: ${Number(item.available_dressed_weight || 0).toFixed(3)} kg</span>
+        <span>Default rate: Rs ${Number(item.default_rate || 0).toFixed(2)}</span>
+      </div>
+    `).join("");
+  } catch (e) {
+    console.error(e);
+    summary.innerHTML = `<div class="thermal-empty">Unable to load dressed stock.</div>`;
   }
 }
 
@@ -586,6 +823,7 @@ async function printCurrentRetailBill() {
           .thermal-items-table th:nth-child(4), .thermal-items-table td:nth-child(4) { width: 12%; text-align: right; }
           .thermal-items-table th:nth-child(5), .thermal-items-table td:nth-child(5) { width: 14%; text-align: right; }
           .thermal-items-table th:nth-child(6), .thermal-items-table td:nth-child(6) { width: 24%; text-align: right; }
+          .thermal-section-row td { padding-top: 5px; font-weight: 700; border-top: 1px dashed #a8adb7; }
           .thermal-summary { margin-top: 6px; font-size: 11px; }
           .thermal-summary p, .thermal-summary-row { display: flex; justify-content: space-between; gap: 10px; margin: 2px 0; }
           .thermal-total { margin-top: 4px; padding-top: 4px; border-top: 1px dashed #666; font-weight: 700; }
@@ -619,8 +857,10 @@ function resetRetailForm() {
     return;
   }
 
-  const rows = document.getElementById("retailItemRows");
-  if (rows) rows.innerHTML = "";
+  const regularRows = document.getElementById("retailRegularRows");
+  const dressedRows = document.getElementById("retailDressedRows");
+  if (regularRows) regularRows.innerHTML = "";
+  if (dressedRows) dressedRows.innerHTML = "";
 
   document.getElementById("retailCustomerName").value = "";
   document.getElementById("retailCustomerPhone").value = "";
@@ -632,7 +872,8 @@ function resetRetailForm() {
   document.getElementById("retailCashier").value = "admin";
   syncRetailSettlementUi();
 
-  addRetailItemRow();
+  addRegularRetailRow();
+  addDressedRetailRow();
   currentRetailBill = null;
   retailDraftDirty = false;
   retailBillCompleted = false;
@@ -654,8 +895,13 @@ function suggestRetailItems(input) {
   retailItemSuggestTimer = setTimeout(async () => {
     try {
       const data = await optionalApiCall(`/items/search?q=${encodeURIComponent(query)}`, { results: [] });
+      const merged = new Set([
+        ...(data.results || []),
+        ...getRetailShortcuts().map(item => item.name).filter(name => name && name.toLowerCase().includes(query.toLowerCase())),
+        ...dressedStockCache.map(item => item.item_name).filter(name => name && name.toLowerCase().includes(query.toLowerCase()))
+      ]);
       suggestions.innerHTML = "";
-      (data.results || []).forEach(item => {
+      Array.from(merged).slice(0, 20).forEach(item => {
         const option = document.createElement("option");
         option.value = item;
         suggestions.appendChild(option);
@@ -716,27 +962,38 @@ function formatBillMoney(value) {
 }
 
 function getRetailReceiptMarkup(bill) {
-  const itemsHtml = (bill.items || []).map((item, index) => {
-    const lineType = (item.line_type || "STANDARD").toUpperCase();
-    const quantityText = `${formatBillNag(item.nag || item.quantity || 0)}${lineType === "DRESSED" ? " NAG" : ""}`;
-    const kgsText = Number(item.weight || 0).toFixed(3);
-    const mrpText = lineType === "DRESSED" ? "0.00" : formatBillRate(item.rate);
-    return `
-      <tr>
-        <td>${index + 1}</td>
-        <td>${escapeHtml(item.item_name)}</td>
-        <td>${escapeHtml(quantityText)}</td>
-        <td>${mrpText}</td>
-        <td>${formatBillRate(item.rate)}</td>
-        <td>${formatBillMoney(item.amount)}</td>
-      </tr>
-      <tr class="thermal-subrow">
-        <td></td>
-        <td colspan="2">KGS ${kgsText}</td>
-        <td colspan="3">${lineType === "DRESSED" ? "Dressed Chicken" : item.unit || "KGS"}</td>
-      </tr>
-    `;
-  }).join("");
+  const renderReceiptRows = (items, sectionLabel, startIndex) => {
+    if (!items.length) return "";
+    const rows = items.map((item, index) => {
+      const lineType = (item.line_type || "STANDARD").toUpperCase();
+      const quantityText = `${formatBillNag(item.nag || item.quantity || 0)}${lineType === "DRESSED" ? " NAG" : ""}`;
+      const kgsText = Number(item.weight || 0).toFixed(3);
+      const mrpText = lineType === "DRESSED" ? "0.00" : formatBillRate(item.rate);
+      return `
+        <tr>
+          <td>${startIndex + index + 1}</td>
+          <td>${escapeHtml(item.item_name)}</td>
+          <td>${escapeHtml(quantityText)}</td>
+          <td>${mrpText}</td>
+          <td>${formatBillRate(item.rate)}</td>
+          <td>${formatBillMoney(item.amount)}</td>
+        </tr>
+        <tr class="thermal-subrow">
+          <td></td>
+          <td colspan="2">KGS ${kgsText}</td>
+          <td colspan="3">${lineType === "DRESSED" ? "Dressed Chicken" : item.unit || "KGS"}</td>
+        </tr>
+      `;
+    }).join("");
+    return `<tr class="thermal-section-row"><td colspan="6">${sectionLabel}</td></tr>${rows}`;
+  };
+
+  const regularItems = (bill.items || []).filter(item => (item.line_type || "STANDARD").toUpperCase() !== "DRESSED");
+  const dressedItems = (bill.items || []).filter(item => (item.line_type || "STANDARD").toUpperCase() === "DRESSED");
+  const itemsHtml = `
+    ${renderReceiptRows(regularItems, "Regular Chicken", 0)}
+    ${renderReceiptRows(dressedItems, "Dressed Chicken", regularItems.length)}
+  `;
 
   const customerBlock = (bill.customer_name || bill.customer_phone || bill.customer_address) ? `
     <div class="thermal-customer">
@@ -800,30 +1057,34 @@ function getRetailReceiptMarkup(bill) {
   `;
 }
 
-function handleRetailLineTypeChange(input) {
-  const row = input?.closest(".retail-item-row");
-  if (!row) return;
-  syncRetailLineUi(row);
-  recalcRetailLine(input);
+function getRetailRowLineType(row) {
+  return (row?.dataset.lineType || "STANDARD").toUpperCase();
 }
 
 function syncRetailLineUi(row) {
-  const lineType = row?.querySelector(".retailLineType")?.value || "STANDARD";
+  const lineType = getRetailRowLineType(row);
   const unitInput = row?.querySelector(".retailUnit");
   const weightInput = row?.querySelector(".retailWeight");
   const rateInput = row?.querySelector(".retailRate");
+  const qtyInput = row?.querySelector(".retailQty");
+  const amountInput = row?.querySelector(".retailAmount");
 
-  if (!unitInput || !weightInput || !rateInput) return;
+  if (!unitInput || !weightInput || !rateInput || !qtyInput || !amountInput) return;
+  row.classList.toggle("retail-item-row-dressed", lineType === "DRESSED");
 
   if (lineType === "DRESSED") {
     unitInput.value = "KGS";
     unitInput.disabled = true;
-    weightInput.placeholder = "Dressed kgs";
-    rateInput.placeholder = "Auto avg rate / kg";
+    qtyInput.placeholder = "Live NAG";
+    weightInput.placeholder = "Dressed weight (kg)";
+    amountInput.placeholder = "Amount";
+    rateInput.placeholder = "Auto rate / kg";
     rateInput.readOnly = true;
   } else {
     unitInput.disabled = false;
+    qtyInput.placeholder = "NAG";
     weightInput.placeholder = "Weight (kg)";
+    amountInput.placeholder = "Amount";
     rateInput.placeholder = "Rate";
     rateInput.readOnly = false;
   }
@@ -959,6 +1220,7 @@ async function syncPendingRetailBills(silent = false) {
   renderRetailOfflineBanner();
   await loadRetailBills();
   await refreshRetailBillNumber();
+  await loadDressedStock();
 
   if (!silent && syncedCount > 0) {
     showToast(`${syncedCount} offline retail bill${syncedCount === 1 ? "" : "s"} synced`);

@@ -126,6 +126,20 @@ def ensure_database_schema():
                 created_at TIMESTAMP DEFAULT now()
             )
         """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS dressed_stock_entries (
+                id UUID PRIMARY KEY,
+                date DATE NOT NULL,
+                item_name VARCHAR NOT NULL,
+                live_quantity NUMERIC,
+                live_weight NUMERIC,
+                dressed_weight NUMERIC,
+                remaining_dressed_weight NUMERIC,
+                default_rate NUMERIC,
+                notes VARCHAR,
+                created_at TIMESTAMP DEFAULT now()
+            )
+        """))
 
 
 ensure_database_schema()
@@ -559,6 +573,20 @@ def parse_decimal(value, default="0"):
         return Decimal(str(value).strip())
     except Exception:
         return Decimal(default)
+
+
+def serialize_dressed_stock_entry(entry):
+    return {
+        "id": str(entry.id),
+        "date": str(entry.date),
+        "item_name": entry.item_name,
+        "live_quantity": float(entry.live_quantity or 0),
+        "live_weight": float(entry.live_weight or 0),
+        "dressed_weight": float(entry.dressed_weight or 0),
+        "remaining_dressed_weight": float(entry.remaining_dressed_weight or 0),
+        "default_rate": float(entry.default_rate or 0),
+        "notes": entry.notes or ""
+    }
 
 
 def serialize_retail_bill(bill, items):
@@ -2858,6 +2886,103 @@ def list_retail_bills(date: str = None, db: Session = Depends(get_db)):
     }
 
 
+@app.get("/dressed-stock")
+def list_dressed_stock(date: str | None = None, db: Session = Depends(get_db)):
+    query = db.query(models.DressedStockEntry).order_by(
+        models.DressedStockEntry.date.desc(),
+        models.DressedStockEntry.created_at.desc()
+    )
+
+    target_date = parse_input_date(date) if date else None
+    if date and not target_date:
+        return {"error": "Invalid date format"}
+    if target_date:
+        query = query.filter(models.DressedStockEntry.date == target_date)
+
+    entries = query.all()
+    grouped = {}
+    for entry in entries:
+        grouped.setdefault(entry.item_name, {
+            "item_name": entry.item_name,
+            "live_quantity": Decimal("0"),
+            "live_weight": Decimal("0"),
+            "available_dressed_weight": Decimal("0"),
+            "default_rate": Decimal("0")
+        })
+        grouped[entry.item_name]["live_quantity"] += Decimal(entry.live_quantity or 0)
+        grouped[entry.item_name]["live_weight"] += Decimal(entry.live_weight or 0)
+        grouped[entry.item_name]["available_dressed_weight"] += Decimal(entry.remaining_dressed_weight or 0)
+        if Decimal(grouped[entry.item_name]["default_rate"] or 0) <= 0 and Decimal(entry.default_rate or 0) > 0:
+            grouped[entry.item_name]["default_rate"] = Decimal(entry.default_rate or 0)
+
+    return {
+        "entries": [serialize_dressed_stock_entry(entry) for entry in entries],
+        "available_items": [
+            {
+                "item_name": item["item_name"],
+                "live_quantity": float(item["live_quantity"]),
+                "live_weight": float(item["live_weight"]),
+                "available_dressed_weight": float(item["available_dressed_weight"]),
+                "default_rate": float(item["default_rate"] or 0)
+            }
+            for item in grouped.values()
+            if item["available_dressed_weight"] > 0
+        ]
+    }
+
+
+@app.post("/dressed-stock")
+def create_dressed_stock_entries(payload: dict = Body(...), input_date: str = None, db: Session = Depends(get_db)):
+    target_date = parse_input_date(input_date)
+    if not target_date:
+        return {"error": "Select working date"}
+
+    rows = payload.get("rows") or []
+    if not rows:
+        return {"error": "Add at least one dressed stock row"}
+
+    inserted = 0
+    skipped = 0
+    errors = []
+
+    for index, row in enumerate(rows, start=1):
+        try:
+            item_name = str(row.get("item_name") or row.get("hen_type") or "").strip()
+            live_quantity = parse_decimal(row.get("live_quantity", row.get("nag")))
+            live_weight = parse_decimal(row.get("live_weight"))
+            dressed_weight = parse_decimal(row.get("dressed_weight"))
+            default_rate = parse_decimal(row.get("default_rate"))
+            notes = str(row.get("notes") or "").strip() or None
+
+            if not item_name or live_quantity < 0 or live_weight < 0 or dressed_weight <= 0 or default_rate < 0:
+                skipped += 1
+                row_error(errors, index, "Enter item, valid live NAG, live weight, dressed weight, and rate")
+                continue
+
+            db.add(models.DressedStockEntry(
+                date=target_date,
+                item_name=item_name,
+                live_quantity=live_quantity if live_quantity > 0 else None,
+                live_weight=live_weight if live_weight > 0 else None,
+                dressed_weight=dressed_weight,
+                remaining_dressed_weight=dressed_weight,
+                default_rate=default_rate if default_rate > 0 else None,
+                notes=notes
+            ))
+            inserted += 1
+        except Exception as e:
+            skipped += 1
+            row_error(errors, index, str(e))
+
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        return {"error": "Saving dressed stock failed", "details": str(e)}
+
+    return upload_result(inserted, skipped, errors)
+
+
 @app.get("/retail-bills/{bill_id}")
 def get_retail_bill(bill_id: UUID, db: Session = Depends(get_db)):
     bill = db.query(models.RetailBill).filter(models.RetailBill.id == bill_id).first()
@@ -2958,6 +3083,35 @@ def create_retail_bill(payload: dict = Body(...), db: Session = Depends(get_db))
         total_quantity += quantity
         total_weight += weight
         total_amount += amount
+
+    dressed_consumption = {}
+    for item in normalized_items:
+        if item["line_type"] == "DRESSED":
+            dressed_consumption[item["item_name"]] = dressed_consumption.get(item["item_name"], Decimal("0")) + Decimal(item["weight"] or 0)
+
+    dressed_batches_to_update = []
+    for item_name, required_weight in dressed_consumption.items():
+        remaining_required = Decimal(required_weight or 0)
+        batches = db.query(models.DressedStockEntry).filter(
+            models.DressedStockEntry.item_name == item_name,
+            models.DressedStockEntry.remaining_dressed_weight > 0
+        ).order_by(
+            models.DressedStockEntry.date.asc(),
+            models.DressedStockEntry.created_at.asc()
+        ).all()
+
+        for batch in batches:
+            if remaining_required <= 0:
+                break
+            available_weight = Decimal(batch.remaining_dressed_weight or 0)
+            used_weight = min(available_weight, remaining_required)
+            batch.remaining_dressed_weight = available_weight - used_weight
+            dressed_batches_to_update.append(batch)
+            remaining_required -= used_weight
+
+        if remaining_required > 0:
+            db.rollback()
+            return {"error": f"Not enough dressed stock for {item_name}. Short by {float(remaining_required):.3f} kg"}
 
     if raw_paid_amount in [None, ""] and payment_mode.strip().upper() != "CREDIT":
         paid_amount = total_amount

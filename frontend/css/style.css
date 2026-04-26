@@ -708,6 +708,21 @@ input[type="file"] {
   gap: 10px;
 }
 
+.retail-billing-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.retail-billing-panel {
+  min-width: 0;
+}
+
+.retail-entry-grid {
+  align-items: start;
+}
+
 .retail-shortcut-chip {
   min-height: 38px;
   padding: 8px 14px;
@@ -722,6 +737,49 @@ input[type="file"] {
   background: #ffe8bd;
 }
 
+.retail-shortcut-empty {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 8px 14px;
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: #fff;
+}
+
+.retail-shortcut-manager {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.retail-shortcut-form {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.retail-shortcut-list-managed {
+  margin-top: 12px;
+}
+
+.retail-shortcut-chip-managed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  border-radius: 12px;
+}
+
+.retail-shortcut-chip-managed button {
+  min-height: 30px;
+  padding: 6px 10px;
+}
+
 .retail-items {
   display: flex;
   flex-direction: column;
@@ -729,9 +787,13 @@ input[type="file"] {
   margin-top: 16px;
 }
 
+.retail-items-horizontal {
+  min-height: 120px;
+}
+
 .retail-item-row {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: 1.5fr 0.9fr 0.9fr 1fr 1fr 1fr auto;
   gap: 10px;
   align-items: center;
   padding: 12px;
@@ -741,10 +803,6 @@ input[type="file"] {
 }
 
 .retail-item-row .retailItemName {
-  grid-column: span 2;
-}
-
-.retail-item-row .retailLineType {
   grid-column: span 1;
 }
 
@@ -761,6 +819,31 @@ input[type="file"] {
   width: 100%;
   min-width: 0;
   padding-inline: 12px;
+}
+
+.retail-item-row-dressed {
+  background: #f6fbf8;
+  border-color: #cbe2d1;
+}
+
+.dressed-stock-row {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.retail-stock-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.retail-stock-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
 }
 
 .retail-item-actions,
@@ -922,6 +1005,12 @@ input[type="file"] {
   padding-bottom: 2px;
 }
 
+.thermal-section-row td {
+  padding-top: 5px;
+  font-weight: 700;
+  border-top: 1px dashed #a8adb7;
+}
+
 .thermal-total {
   margin-top: 4px;
   padding-top: 4px;
@@ -957,17 +1046,23 @@ input[type="file"] {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .retail-billing-grid,
   .retail-form-grid,
   .retail-notes-grid {
     grid-template-columns: 1fr 1fr;
   }
 
+  .retail-shortcut-form,
   .retail-item-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .retail-item-row .retailItemName {
     grid-column: 1 / -1;
+  }
+
+  .dressed-stock-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -976,8 +1071,11 @@ input[type="file"] {
     grid-template-columns: 1fr;
   }
 
+  .retail-billing-grid,
   .retail-form-grid,
   .retail-item-row,
+  .retail-shortcut-form,
+  .dressed-stock-row,
   .retail-notes-grid {
     grid-template-columns: 1fr;
   }

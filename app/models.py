@@ -148,3 +148,18 @@ class RetailBillItem(Base):
     rate = Column(Numeric)
     amount = Column(Numeric)
     created_at = Column(TIMESTAMP, server_default=func.now())
+
+
+class DressedStockEntry(Base):
+    __tablename__ = "dressed_stock_entries"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    date = Column(Date, nullable=False)
+    item_name = Column(String, nullable=False)
+    live_quantity = Column(Numeric)
+    live_weight = Column(Numeric)
+    dressed_weight = Column(Numeric)
+    remaining_dressed_weight = Column(Numeric)
+    default_rate = Column(Numeric)
+    notes = Column(String)
+    created_at = Column(TIMESTAMP, server_default=func.now())
