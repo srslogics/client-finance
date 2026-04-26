@@ -535,9 +535,11 @@ async function savePartyDirectoryEntry() {
 async function loadPartyDirectory() {
   const body = document.getElementById("partyDirectoryBody");
   const select = document.getElementById("directoryPartySelect");
-  if (!body) return;
+  if (!body && !select) return;
 
-  body.innerHTML = `<tr><td colspan="4" class="empty">Loading saved parties...</td></tr>`;
+  if (body) {
+    body.innerHTML = `<tr><td colspan="4" class="empty">Loading saved parties...</td></tr>`;
+  }
   if (select) {
     select.innerHTML = `<option value="">Loading saved parties...</option>`;
   }
@@ -555,24 +557,30 @@ async function loadPartyDirectory() {
       });
     }
     if (!results.length) {
-      body.innerHTML = `<tr><td colspan="4" class="empty">No saved parties yet</td></tr>`;
+      if (body) {
+        body.innerHTML = `<tr><td colspan="4" class="empty">No saved parties yet</td></tr>`;
+      }
       return;
     }
 
-    body.innerHTML = "";
-    results.forEach(party => {
-      const row = document.createElement("tr");
-      row.innerHTML = `
-        <td>${escapeHtml(party.name || "")}</td>
-        <td>${escapeHtml(party.type || "BOTH")}</td>
-        <td>${escapeHtml(party.phone || "-")}</td>
-        <td>${escapeHtml(party.address || "-")}</td>
-      `;
-      body.appendChild(row);
-    });
+    if (body) {
+      body.innerHTML = "";
+      results.forEach(party => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${escapeHtml(party.name || "")}</td>
+          <td>${escapeHtml(party.type || "BOTH")}</td>
+          <td>${escapeHtml(party.phone || "-")}</td>
+          <td>${escapeHtml(party.address || "-")}</td>
+        `;
+        body.appendChild(row);
+      });
+    }
   } catch (e) {
     console.error(e);
-    body.innerHTML = `<tr><td colspan="4" class="empty">Saved parties failed to load</td></tr>`;
+    if (body) {
+      body.innerHTML = `<tr><td colspan="4" class="empty">Saved parties failed to load</td></tr>`;
+    }
     if (select) {
       select.innerHTML = `<option value="">Saved parties failed to load</option>`;
     }

@@ -66,20 +66,8 @@ function loadPage(page) {
               </select>
               <button type="button" onclick="savePartyDirectoryEntry()">Save Party</button>
             </div>
-            <div class="card table-card party-directory-table">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Type</th>
-                    <th>Phone</th>
-                    <th>Address</th>
-                  </tr>
-                </thead>
-                <tbody id="partyDirectoryBody">
-                  <tr><td colspan="4" class="empty">No saved parties yet</td></tr>
-                </tbody>
-              </table>
+            <div class="upload-box directory-intro">
+              Pick a saved party from the dropdown to edit it, or leave the dropdown empty to add a new one.
             </div>
           </div>
 
