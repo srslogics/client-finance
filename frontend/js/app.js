@@ -460,6 +460,7 @@ function loadPage(page) {
               <div class="report-actions retail-actions">
                 <button type="button" onclick="saveRetailBill()">Save Bill</button>
                 <button type="button" onclick="printCurrentRetailBill()">Print Latest Bill</button>
+                <button type="button" onclick="sendCurrentRetailBill()">Send Bill</button>
               </div>
             </div>
 

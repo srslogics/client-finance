@@ -865,6 +865,80 @@ async function printCurrentRetailBill() {
   retailBillCompleted = true;
 }
 
+function getRetailBillShareText(bill) {
+  const lines = [];
+  lines.push(`${RETAIL_SHOP_PROFILE.name}`);
+  lines.push(`Bill No: ${bill.bill_number}`);
+  lines.push(`Date: ${formatDisplayDate(bill.date)}`);
+  if (bill.customer_name) lines.push(`Customer: ${bill.customer_name}`);
+  lines.push("");
+
+  (bill.items || []).forEach((item, index) => {
+    const lineType = (item.line_type || "STANDARD").toUpperCase();
+    const nag = formatBillNag(item.nag || item.quantity || 0);
+    const weight = Number(item.weight || 0).toFixed(3);
+    const amount = formatBillMoney(item.amount);
+    const itemLabel = lineType === "DRESSED" ? `${item.item_name} (Dressed)` : item.item_name;
+    lines.push(`${index + 1}. ${itemLabel} | NAG ${nag} | KGS ${weight} | Rs ${amount}`);
+  });
+
+  lines.push("");
+  lines.push(`Total Amount: Rs ${formatBillMoney(bill.total_amount)}`);
+  lines.push(`Received: Rs ${formatBillMoney(bill.paid_amount)}`);
+  lines.push(`Remaining: Rs ${formatBillMoney(bill.outstanding_amount)}`);
+  lines.push(`Mode: ${bill.payment_mode || "Cash"}`);
+  if (bill.notes) {
+    lines.push(`Notes: ${bill.notes}`);
+  }
+  lines.push("");
+  lines.push(`Thank you`);
+  lines.push(`${RETAIL_SHOP_PROFILE.phone}`);
+  return lines.join("\n");
+}
+
+async function sendCurrentRetailBill() {
+  let bill = currentRetailBill;
+
+  if (!bill || retailDraftDirty) {
+    bill = await saveRetailBill();
+  }
+
+  if (!bill || !(bill.items || []).length) {
+    showToast("No bill ready to send");
+    return;
+  }
+
+  const shareText = getRetailBillShareText(bill);
+  const customerPhone = String(bill.customer_phone || "").replace(/\D/g, "");
+
+  try {
+    if (navigator.share) {
+      await navigator.share({
+        title: `Retail Bill ${bill.bill_number}`,
+        text: shareText
+      });
+      showToast("Bill shared");
+      return;
+    }
+  } catch (e) {
+    if (e?.name !== "AbortError") {
+      console.error(e);
+    }
+  }
+
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(shareText);
+    } catch (e) {
+      console.error("Clipboard copy failed", e);
+    }
+  }
+
+  const whatsappTarget = customerPhone ? `https://wa.me/${customerPhone}?text=${encodeURIComponent(shareText)}` : `https://wa.me/?text=${encodeURIComponent(shareText)}`;
+  window.open(whatsappTarget, "_blank", "noopener,noreferrer");
+  showToast(customerPhone ? "Bill copied and WhatsApp opened" : "Bill text copied. Add receiver and send");
+}
+
 function resetRetailForm() {
   const draftHasItems = collectRetailItemsFromForm().length > 0;
   if (draftHasItems && !retailBillCompleted) {
