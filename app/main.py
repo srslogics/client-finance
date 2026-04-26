@@ -3228,15 +3228,17 @@ def create_retail_bill(payload: dict = Body(...), db: Session = Depends(get_db))
         unit = str(raw_item.get("unit") or "KGS").strip().upper()
         weight = parse_decimal(raw_item.get("weight"))
 
-        if quantity <= 0:
+        if line_type != "DRESSED" and quantity <= 0:
             return {"error": f"Quantity must be greater than 0 on row {index}"}
 
-        if unit == "KGS" and weight <= 0:
+        if line_type != "DRESSED" and unit == "KGS" and weight <= 0:
             weight = quantity
 
         amount = parse_decimal(raw_item.get("amount"))
         if line_type == "DRESSED":
             unit = "KGS"
+            if quantity < 0:
+                return {"error": f"Quantity cannot be negative on row {index}"}
             if weight <= 0:
                 return {"error": f"Kgs must be greater than 0 for dressed chicken on row {index}"}
             if amount <= 0 and rate > 0:
@@ -3244,6 +3246,7 @@ def create_retail_bill(payload: dict = Body(...), db: Session = Depends(get_db))
             if amount <= 0:
                 return {"error": f"Amount must be greater than 0 for dressed chicken on row {index}"}
             rate = decimal_ratio(amount, weight)
+            quantity = Decimal("0")
         elif amount <= 0:
             amount_base = weight if weight > 0 else quantity
             amount = amount_base * rate

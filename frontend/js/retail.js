@@ -352,7 +352,7 @@ function addShortcutRetailItem(shortcut) {
 
   itemInput.value = shortcut.name;
   targetRow.dataset.lineType = lineType;
-  if (!qtyInput.value) qtyInput.value = "1";
+  if (lineType !== "DRESSED" && !qtyInput.value) qtyInput.value = "1";
   unitSelect.value = shortcut.unit || "KGS";
   if (Number(shortcut.rate || 0) > 0) {
     rateInput.value = Number(shortcut.rate).toFixed(2);
@@ -483,17 +483,21 @@ function applyRetailDefaults(row) {
 
 function collectRetailItemsFromForm() {
   return Array.from(document.querySelectorAll("#retailRegularRows .retail-item-row, #retailDressedRows .retail-item-row"))
-    .map(row => ({
-      item_name: row.querySelector(".retailItemName")?.value.trim(),
-      line_type: getRetailRowLineType(row),
-      nag: Number(row.querySelector(".retailQty")?.value || 0),
-      quantity: Number(row.querySelector(".retailQty")?.value || 0),
-      unit: row.querySelector(".retailUnit")?.value || "KGS",
-      weight: Number(row.querySelector(".retailWeight")?.value || 0),
-      rate: Number(row.querySelector(".retailRate")?.value || 0),
-      amount: Number(row.querySelector(".retailAmount")?.value || 0)
-    }))
-    .filter(item => item.item_name && item.quantity > 0);
+    .map(row => {
+      const lineType = getRetailRowLineType(row);
+      const quantity = lineType === "DRESSED" ? 0 : Number(row.querySelector(".retailQty")?.value || 0);
+      return {
+        item_name: row.querySelector(".retailItemName")?.value.trim(),
+        line_type: lineType,
+        nag: quantity,
+        quantity,
+        unit: lineType === "DRESSED" ? "KGS" : (row.querySelector(".retailUnit")?.value || "KGS"),
+        weight: Number(row.querySelector(".retailWeight")?.value || 0),
+        rate: Number(row.querySelector(".retailRate")?.value || 0),
+        amount: Number(row.querySelector(".retailAmount")?.value || 0)
+      };
+    })
+    .filter(item => item.item_name && (item.line_type === "DRESSED" ? item.weight > 0 : item.quantity > 0));
 }
 
 function buildRetailBillFromForm() {
@@ -1110,11 +1114,14 @@ function getRetailBillShareText(bill) {
 
   (bill.items || []).forEach((item, index) => {
     const lineType = (item.line_type || "STANDARD").toUpperCase();
-    const nag = formatBillNag(item.nag || item.quantity || 0);
     const weight = Number(item.weight || 0).toFixed(3);
     const amount = formatBillMoney(item.amount);
-    const itemLabel = lineType === "DRESSED" ? `${item.item_name} (Dressed)` : item.item_name;
-    lines.push(`${index + 1}. ${itemLabel} | NAG ${nag} | KGS ${weight} | Rs ${amount}`);
+    if (lineType === "DRESSED") {
+      lines.push(`${index + 1}. ${item.item_name} (Dressed) | KGS ${weight} | Rs ${amount}`);
+    } else {
+      const nag = formatBillNag(item.nag || item.quantity || 0);
+      lines.push(`${index + 1}. ${item.item_name} | NAG ${nag} | KGS ${weight} | Rs ${amount}`);
+    }
   });
 
   lines.push("");
@@ -1589,7 +1596,7 @@ function getRetailReceiptMarkup(bill) {
     if (!items.length) return "";
     const rows = items.map((item, index) => {
       const lineType = (item.line_type || "STANDARD").toUpperCase();
-      const quantityText = `${formatBillNag(item.nag || item.quantity || 0)}${lineType === "DRESSED" ? " NAG" : ""}`;
+      const quantityText = lineType === "DRESSED" ? "" : formatBillNag(item.nag || item.quantity || 0);
       const kgsText = Number(item.weight || 0).toFixed(3);
       const mrpText = lineType === "DRESSED" ? "0.00" : formatBillRate(item.rate);
       return `
@@ -1745,7 +1752,8 @@ function syncRetailLineUi(row) {
   if (lineType === "DRESSED") {
     unitInput.value = "KGS";
     unitInput.disabled = true;
-    qtyInput.placeholder = "Live NAG";
+    qtyInput.value = "";
+    qtyInput.placeholder = "Not on bill";
     weightInput.placeholder = "Dressed weight (kg)";
     amountInput.placeholder = "Amount";
     rateInput.placeholder = "Auto rate / kg";

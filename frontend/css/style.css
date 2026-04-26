@@ -888,6 +888,12 @@ input[type="file"] {
 .retail-item-row-dressed {
   background: #f6fbf8;
   border-color: #cbe2d1;
+  grid-template-columns: 1.8fr 1.1fr 1fr 1fr auto;
+}
+
+.retail-item-row-dressed .retailQty,
+.retail-item-row-dressed .retailUnit {
+  display: none;
 }
 
 .dressed-stock-row {
