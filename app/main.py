@@ -51,6 +51,7 @@ def ensure_database_schema():
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_daily_stock_date ON daily_stock (date)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_retail_bills_date ON retail_bills (date)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_retail_bill_items_bill_id ON retail_bill_items (bill_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_payment_receipts_date ON payment_receipts (date)"))
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS item_opening_stock (
                 id UUID PRIMARY KEY,
@@ -138,6 +139,24 @@ def ensure_database_schema():
                 default_rate NUMERIC,
                 notes VARCHAR,
                 created_at TIMESTAMP DEFAULT now()
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS payment_receipts (
+                id UUID PRIMARY KEY,
+                receipt_number VARCHAR NOT NULL,
+                date DATE NOT NULL,
+                party_id UUID REFERENCES parties(id),
+                party_name VARCHAR,
+                party_phone VARCHAR,
+                party_address VARCHAR,
+                cashier_name VARCHAR,
+                direction VARCHAR NOT NULL,
+                payment_mode VARCHAR,
+                amount NUMERIC,
+                notes VARCHAR,
+                created_at TIMESTAMP DEFAULT now(),
+                CONSTRAINT unique_payment_receipt_number_per_day UNIQUE (date, receipt_number)
             )
         """))
 
@@ -623,6 +642,25 @@ def serialize_retail_bill(bill, items):
             }
             for item in items
         ]
+    }
+
+
+def serialize_payment_receipt(receipt, balance_after=None):
+    created_at = receipt.created_at or datetime.utcnow()
+    return {
+        "id": str(receipt.id),
+        "receipt_number": receipt.receipt_number,
+        "date": str(receipt.date),
+        "time": created_at.strftime("%H:%M:%S"),
+        "party_name": receipt.party_name or "",
+        "party_phone": receipt.party_phone or "",
+        "party_address": receipt.party_address or "",
+        "cashier_name": receipt.cashier_name or "admin",
+        "direction": receipt.direction or "RECEIVED",
+        "payment_mode": receipt.payment_mode or "Cash",
+        "amount": float(receipt.amount or 0),
+        "balance_after": float(balance_after or 0),
+        "notes": receipt.notes or ""
     }
 
 
@@ -2886,6 +2924,54 @@ def list_retail_bills(date: str = None, db: Session = Depends(get_db)):
     }
 
 
+@app.get("/payment-receipts/next-number")
+def next_payment_receipt_number(date: str, db: Session = Depends(get_db)):
+    target_date = parse_input_date(date)
+    if not target_date:
+        return {"error": "Invalid date format"}
+
+    receipt_numbers = db.query(models.PaymentReceipt.receipt_number).all()
+
+    max_number = 0
+    for row in receipt_numbers:
+        digits = "".join(char for char in str(row.receipt_number or "") if char.isdigit())
+        if digits:
+            max_number = max(max_number, int(digits))
+
+    return {"receipt_number": str(max_number + 1)}
+
+
+@app.get("/payment-receipts")
+def list_payment_receipts(date: str = None, db: Session = Depends(get_db)):
+    query = db.query(models.PaymentReceipt).order_by(
+        models.PaymentReceipt.date.desc(),
+        models.PaymentReceipt.created_at.desc()
+    )
+
+    if date:
+        target_date = parse_input_date(date)
+        if not target_date:
+            return {"error": "Invalid date format"}
+        query = query.filter(models.PaymentReceipt.date == target_date)
+
+    receipts = query.limit(50).all()
+
+    return {
+        "results": [
+            {
+                "id": str(receipt.id),
+                "receipt_number": receipt.receipt_number,
+                "date": str(receipt.date),
+                "party_name": receipt.party_name or "",
+                "direction": receipt.direction or "RECEIVED",
+                "payment_mode": receipt.payment_mode or "Cash",
+                "amount": float(receipt.amount or 0)
+            }
+            for receipt in receipts
+        ]
+    }
+
+
 @app.get("/dressed-stock")
 def list_dressed_stock(date: str | None = None, db: Session = Depends(get_db)):
     query = db.query(models.DressedStockEntry).order_by(
@@ -2981,6 +3067,99 @@ def create_dressed_stock_entries(payload: dict = Body(...), input_date: str = No
         return {"error": "Saving dressed stock failed", "details": str(e)}
 
     return upload_result(inserted, skipped, errors)
+
+
+@app.get("/payment-receipts/{receipt_id}")
+def get_payment_receipt(receipt_id: UUID, db: Session = Depends(get_db)):
+    receipt = db.query(models.PaymentReceipt).filter(models.PaymentReceipt.id == receipt_id).first()
+    if not receipt:
+        return {"error": "Payment receipt not found"}
+    txns = db.query(models.Transaction).filter(models.Transaction.party_id == receipt.party_id).order_by(
+        models.Transaction.date.asc(),
+        models.Transaction.created_at.asc()
+    ).all()
+    balance_after, _ = build_ledger(txns)
+    return serialize_payment_receipt(receipt, balance_after)
+
+
+@app.post("/payment-receipts")
+def create_payment_receipt(payload: dict = Body(...), db: Session = Depends(get_db)):
+    target_date = parse_input_date(payload.get("date"))
+    if not target_date:
+        return {"error": "Invalid receipt date"}
+
+    party_name = str(payload.get("party_name") or "").strip()
+    if not party_name:
+        return {"error": "Party name is required"}
+
+    amount = parse_decimal(payload.get("amount"))
+    if amount <= 0:
+        return {"error": "Amount must be greater than 0"}
+
+    direction = normalize_payment_direction(payload.get("direction"))
+    if not direction:
+        return {"error": "Direction must be RECEIVED or PAID"}
+
+    receipt_number = str(payload.get("receipt_number") or "").strip()
+    if not receipt_number:
+        next_number = next_payment_receipt_number(str(target_date), db)
+        receipt_number = next_number.get("receipt_number", "1")
+
+    existing = db.query(models.PaymentReceipt).filter(
+        models.PaymentReceipt.date == target_date,
+        models.PaymentReceipt.receipt_number == receipt_number
+    ).first()
+    if existing:
+        return {"error": "Receipt number already exists for this date"}
+
+    party_phone = str(payload.get("party_phone") or "").strip()
+    party_address = str(payload.get("party_address") or "").strip()
+    cashier_name = str(payload.get("cashier_name") or "admin").strip()
+    payment_mode = str(payload.get("payment_mode") or "Cash").strip()
+    notes = str(payload.get("notes") or "").strip()
+
+    party_id = get_or_create_party(db, party_name, "BOTH", {})
+
+    receipt = models.PaymentReceipt(
+        id=uuid4(),
+        receipt_number=receipt_number,
+        date=target_date,
+        party_id=party_id,
+        party_name=party_name,
+        party_phone=party_phone or None,
+        party_address=party_address or None,
+        cashier_name=cashier_name or "admin",
+        direction=direction,
+        payment_mode=payment_mode,
+        amount=amount,
+        notes=notes or None
+    )
+    db.add(receipt)
+    db.flush()
+
+    db.add(models.Transaction(
+        date=target_date,
+        party_id=party_id,
+        type="PAYMENT",
+        category=direction,
+        amount=amount,
+        payment_mode=payment_mode,
+        source_ref=f"payment-receipt:{receipt.id}"
+    ))
+
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        return {"error": "Saving payment receipt failed", "details": str(e)}
+
+    db.refresh(receipt)
+    txns = db.query(models.Transaction).filter(models.Transaction.party_id == party_id).order_by(
+        models.Transaction.date.asc(),
+        models.Transaction.created_at.asc()
+    ).all()
+    balance_after, _ = build_ledger(txns)
+    return {"receipt": serialize_payment_receipt(receipt, balance_after)}
 
 
 @app.get("/retail-bills/{bill_id}")

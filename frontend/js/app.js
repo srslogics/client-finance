@@ -26,7 +26,7 @@ function loadPage(page) {
             <h2>Enter, review, and process the day directly in the app</h2>
           </div>
 
-          <div class="section">
+          <div class="section" id="retailBillHistorySection">
             <div class="section-head">
               <div>
                 <span>Step 1</span>
@@ -324,7 +324,7 @@ function loadPage(page) {
 
           <div class="page-intro">
             <span>Counter Billing</span>
-            <h2>Create retail bills, print thermal receipts, and push sales into the daily sheet</h2>
+            <h2>Create retail bills, payment receipts, print thermal slips, and push records into the system</h2>
           </div>
 
           <div class="retail-layout">
@@ -337,32 +337,35 @@ function loadPage(page) {
                 <button type="button" onclick="resetRetailForm()">New Bill</button>
               </div>
 
-              <div id="retailOfflineBanner" class="notice info" style="display:none;"></div>
+              <div id="retailSalesHeader">
+                <div id="retailOfflineBanner" class="notice info" style="display:none;"></div>
 
-              <div class="retail-form-grid">
-                <input type="date" id="retailDate" aria-label="Retail bill date">
-                <input type="text" id="retailBillNumber" placeholder="Bill no">
-                <input type="text" id="retailCashier" placeholder="Cashier name" value="admin">
-                <select id="retailSettlementType">
-                  <option value="paid">Paid in Full</option>
-                  <option value="partial">Part Payment</option>
-                  <option value="credit">Credit</option>
-                </select>
-                <select id="retailPaymentMode">
-                  <option value="Cash">Cash</option>
-                  <option value="Online">Online</option>
-                  <option value="Bank">Bank</option>
-                  <option value="Credit">Credit</option>
-                </select>
-                <input type="text" id="retailCustomerName" placeholder="Customer name (optional)" list="retailCustomerSuggestions" autocomplete="off" oninput="suggestRetailCustomers()">
-                <datalist id="retailCustomerSuggestions"></datalist>
-                <input type="text" id="retailCustomerPhone" placeholder="Phone (optional)">
-                <input type="text" id="retailCustomerAddress" placeholder="Address (optional)">
+                <div class="retail-form-grid">
+                  <input type="date" id="retailDate" aria-label="Retail bill date">
+                  <input type="text" id="retailBillNumber" placeholder="Bill no">
+                  <input type="text" id="retailCashier" placeholder="Cashier name" value="admin">
+                  <select id="retailSettlementType">
+                    <option value="paid">Paid in Full</option>
+                    <option value="partial">Part Payment</option>
+                    <option value="credit">Credit</option>
+                  </select>
+                  <select id="retailPaymentMode">
+                    <option value="Cash">Cash</option>
+                    <option value="Online">Online</option>
+                    <option value="Bank">Bank</option>
+                    <option value="Credit">Credit</option>
+                  </select>
+                  <input type="text" id="retailCustomerName" placeholder="Customer name (optional)" list="retailCustomerSuggestions" autocomplete="off" oninput="suggestRetailCustomers()">
+                  <datalist id="retailCustomerSuggestions"></datalist>
+                  <input type="text" id="retailCustomerPhone" placeholder="Phone (optional)">
+                  <input type="text" id="retailCustomerAddress" placeholder="Address (optional)">
+                </div>
               </div>
 
               <div class="retail-mode-switch" role="tablist" aria-label="Retail billing mode">
                 <button type="button" id="retailModeRegular" class="retail-mode-button active" onclick="setRetailBillingMode('regular')">Regular Billing</button>
                 <button type="button" id="retailModeDressed" class="retail-mode-button" onclick="setRetailBillingMode('dressed')">Dressed Billing</button>
+                <button type="button" id="retailModePayment" class="retail-mode-button" onclick="setRetailBillingMode('payment')">Payment Receipt</button>
               </div>
 
               <div id="retailRegularSection" class="retail-billing-panel retail-billing-section">
@@ -408,6 +411,45 @@ function loadPage(page) {
                 <div id="retailDressedRows" class="retail-items retail-items-horizontal"></div>
                 <div class="retail-item-actions">
                   <button type="button" onclick="addDressedRetailRow()">Add Dressed Item</button>
+                </div>
+              </div>
+
+              <div id="paymentReceiptSection" class="retail-billing-panel retail-billing-section" style="display:none;">
+                <div class="retail-shortcuts-head">
+                  <span>Payment Receipt</span>
+                  <p>Create a separate receipt when money is received from or paid to a vendor or dealer.</p>
+                </div>
+
+                <div class="retail-form-grid">
+                  <input type="date" id="paymentReceiptDate" aria-label="Payment receipt date">
+                  <input type="text" id="paymentReceiptNumber" placeholder="Receipt no">
+                  <input type="text" id="paymentReceiptCashier" placeholder="Handled by" value="admin">
+                  <select id="paymentReceiptDirection">
+                    <option value="RECEIVED">Amount Received</option>
+                    <option value="PAID">Amount Paid</option>
+                  </select>
+                  <select id="paymentReceiptMode">
+                    <option value="Cash">Cash</option>
+                    <option value="Online">Online</option>
+                    <option value="Bank">Bank</option>
+                    <option value="Cheque">Cheque</option>
+                  </select>
+                  <input type="text" id="paymentReceiptPartyName" placeholder="Party name" list="paymentReceiptPartySuggestions" autocomplete="off" oninput="suggestPaymentReceiptParties()">
+                  <datalist id="paymentReceiptPartySuggestions"></datalist>
+                  <input type="text" id="paymentReceiptPartyPhone" placeholder="Phone (optional)">
+                  <input type="text" id="paymentReceiptPartyAddress" placeholder="Address (optional)">
+                  <input type="number" id="paymentReceiptAmount" placeholder="Amount" min="0" step="0.01">
+                </div>
+
+                <div class="retail-form-grid retail-notes-grid">
+                  <textarea id="paymentReceiptNotes" placeholder="Notes for payment receipt"></textarea>
+                </div>
+
+                <div class="report-actions retail-actions">
+                  <button type="button" onclick="savePaymentReceipt()">Save Receipt</button>
+                  <button type="button" onclick="printCurrentPaymentReceipt()">Print Payment Receipt</button>
+                  <button type="button" onclick="sendCurrentPaymentReceipt()">Send Payment Receipt</button>
+                  <button type="button" onclick="resetPaymentReceiptForm()">New Payment Receipt</button>
                 </div>
               </div>
 
@@ -500,6 +542,35 @@ function loadPage(page) {
                 </thead>
                 <tbody id="retailBillsBody">
                   <tr><td colspan="8" class="empty">No retail bills yet</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="section" id="paymentReceiptHistorySection" style="display:none;">
+            <div class="section-head">
+              <div>
+                <span>Saved Payment Receipts</span>
+                <h2>Recent Payment Receipts</h2>
+              </div>
+              <button type="button" onclick="loadPaymentReceipts()">Refresh</button>
+            </div>
+
+            <div class="card table-card">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Receipt No</th>
+                    <th>Date</th>
+                    <th>Party</th>
+                    <th>Direction</th>
+                    <th>Mode</th>
+                    <th>Amount</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="paymentReceiptBody">
+                  <tr><td colspan="7" class="empty">No payment receipts yet</td></tr>
                 </tbody>
               </table>
             </div>

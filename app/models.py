@@ -163,3 +163,25 @@ class DressedStockEntry(Base):
     default_rate = Column(Numeric)
     notes = Column(String)
     created_at = Column(TIMESTAMP, server_default=func.now())
+
+
+class PaymentReceipt(Base):
+    __tablename__ = "payment_receipts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    receipt_number = Column(String, nullable=False)
+    date = Column(Date, nullable=False)
+    party_id = Column(UUID(as_uuid=True), ForeignKey("parties.id"))
+    party_name = Column(String)
+    party_phone = Column(String)
+    party_address = Column(String)
+    cashier_name = Column(String)
+    direction = Column(String, nullable=False)
+    payment_mode = Column(String)
+    amount = Column(Numeric)
+    notes = Column(String)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("date", "receipt_number", name="unique_payment_receipt_number_per_day"),
+    )

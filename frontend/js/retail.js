@@ -19,8 +19,11 @@ const RETAIL_SHORTCUT_STORAGE_KEY = "stockpilot.retail.shortcuts";
 let retailItemSuggestTimer = null;
 let retailCustomerSuggestTimer = null;
 let currentRetailBill = null;
+let currentPaymentReceipt = null;
 let retailDraftDirty = false;
 let retailBillCompleted = false;
+let paymentReceiptDraftDirty = false;
+let paymentReceiptCompleted = false;
 let retailConnectivityListenersAttached = false;
 let dressedStockCache = [];
 let retailBillingMode = "regular";
@@ -59,6 +62,37 @@ function initRetailPage() {
   if (settlementType) {
     settlementType.addEventListener("change", handleRetailSettlementTypeChange);
   }
+  const paymentReceiptDate = document.getElementById("paymentReceiptDate");
+  if (paymentReceiptDate) {
+    paymentReceiptDate.value = formatDateInput(new Date());
+    paymentReceiptDate.addEventListener("change", async () => {
+      await refreshPaymentReceiptNumber();
+      loadPaymentReceipts();
+      if (retailBillingMode === "payment") {
+        renderPaymentReceiptPreviewFromForm();
+      }
+    });
+  }
+
+  const paymentReceiptIds = [
+    "paymentReceiptDate",
+    "paymentReceiptNumber",
+    "paymentReceiptCashier",
+    "paymentReceiptDirection",
+    "paymentReceiptMode",
+    "paymentReceiptPartyName",
+    "paymentReceiptPartyPhone",
+    "paymentReceiptPartyAddress",
+    "paymentReceiptAmount",
+    "paymentReceiptNotes"
+  ];
+
+  paymentReceiptIds.forEach(id => {
+    const input = document.getElementById(id);
+    if (!input) return;
+    input.addEventListener("input", markPaymentReceiptDraftDirty);
+    input.addEventListener("change", markPaymentReceiptDraftDirty);
+  });
 
   attachRetailConnectivityListeners();
   addRegularRetailRow();
@@ -70,23 +104,69 @@ function initRetailPage() {
   syncRetailSettlementUi();
   setRetailBillingMode("regular");
   refreshRetailBillNumber();
+  refreshPaymentReceiptNumber();
   renderRetailPreviewFromForm();
   loadRetailBills();
+  loadPaymentReceipts();
   loadDressedStock();
   syncPendingRetailBills(true);
 }
 
 function setRetailBillingMode(mode) {
-  retailBillingMode = mode === "dressed" ? "dressed" : "regular";
+  retailBillingMode = mode === "dressed" ? "dressed" : mode === "payment" ? "payment" : "regular";
   const regularButton = document.getElementById("retailModeRegular");
   const dressedButton = document.getElementById("retailModeDressed");
+  const paymentButton = document.getElementById("retailModePayment");
   const regularSection = document.getElementById("retailRegularSection");
   const dressedSection = document.getElementById("retailDressedSection");
+  const paymentSection = document.getElementById("paymentReceiptSection");
+  const retailSalesHeader = document.getElementById("retailSalesHeader");
+  const setupSection = document.querySelector(".retail-setup-panel");
+  const retailHistorySection = document.getElementById("retailBillHistorySection");
+  const paymentHistorySection = document.getElementById("paymentReceiptHistorySection");
 
   if (regularButton) regularButton.classList.toggle("active", retailBillingMode === "regular");
   if (dressedButton) dressedButton.classList.toggle("active", retailBillingMode === "dressed");
+  if (paymentButton) paymentButton.classList.toggle("active", retailBillingMode === "payment");
   if (regularSection) regularSection.style.display = retailBillingMode === "regular" ? "" : "none";
   if (dressedSection) dressedSection.style.display = retailBillingMode === "dressed" ? "" : "none";
+  if (paymentSection) paymentSection.style.display = retailBillingMode === "payment" ? "" : "none";
+  if (retailSalesHeader) retailSalesHeader.style.display = retailBillingMode === "payment" ? "none" : "";
+  if (setupSection) setupSection.style.display = retailBillingMode === "payment" ? "none" : "";
+  if (retailHistorySection) retailHistorySection.style.display = retailBillingMode === "payment" ? "none" : "";
+  if (paymentHistorySection) paymentHistorySection.style.display = retailBillingMode === "payment" ? "" : "none";
+
+  if (retailBillingMode === "payment") {
+    renderPaymentReceiptPreviewFromForm();
+  } else if (currentRetailBill && !retailDraftDirty) {
+    renderRetailPreview(currentRetailBill);
+  } else {
+    renderRetailPreviewFromForm();
+  }
+}
+
+async function refreshPaymentReceiptNumber() {
+  const dateInput = document.getElementById("paymentReceiptDate");
+  const numberInput = document.getElementById("paymentReceiptNumber");
+  if (!dateInput || !numberInput) return;
+
+  if (!dateInput.value) {
+    dateInput.value = formatDateInput(new Date());
+  }
+
+  try {
+    const data = await optionalApiCall(
+      `/payment-receipts/next-number?date=${encodeURIComponent(dateInput.value)}`,
+      { receipt_number: "1" },
+      "GET",
+      null,
+      { cache: false }
+    );
+    numberInput.value = data.receipt_number || "1";
+  } catch (e) {
+    console.error(e);
+    numberInput.value = "1";
+  }
 }
 
 function renderRetailShortcuts() {
@@ -463,6 +543,26 @@ function renderRetailPreviewFromForm() {
   renderRetailPreview(buildRetailBillFromForm(), true);
 }
 
+function buildPaymentReceiptFromForm() {
+  return {
+    receipt_number: document.getElementById("paymentReceiptNumber")?.value.trim() || "Draft",
+    date: document.getElementById("paymentReceiptDate")?.value || formatDateInput(new Date()),
+    time: new Date().toLocaleTimeString("en-GB"),
+    cashier_name: document.getElementById("paymentReceiptCashier")?.value.trim() || "admin",
+    party_name: document.getElementById("paymentReceiptPartyName")?.value.trim() || "",
+    party_phone: document.getElementById("paymentReceiptPartyPhone")?.value.trim() || "",
+    party_address: document.getElementById("paymentReceiptPartyAddress")?.value.trim() || "",
+    direction: document.getElementById("paymentReceiptDirection")?.value || "RECEIVED",
+    payment_mode: document.getElementById("paymentReceiptMode")?.value || "Cash",
+    amount: Number(document.getElementById("paymentReceiptAmount")?.value || 0),
+    notes: document.getElementById("paymentReceiptNotes")?.value.trim() || ""
+  };
+}
+
+function renderPaymentReceiptPreviewFromForm() {
+  renderPaymentReceiptPreview(buildPaymentReceiptFromForm(), true);
+}
+
 function markRetailAmountDirty() {
   retailDraftDirty = true;
   retailBillCompleted = false;
@@ -473,6 +573,14 @@ function markRetailDraftDirty() {
   retailDraftDirty = true;
   retailBillCompleted = false;
   renderRetailPreviewFromForm();
+}
+
+function markPaymentReceiptDraftDirty() {
+  paymentReceiptDraftDirty = true;
+  paymentReceiptCompleted = false;
+  if (retailBillingMode === "payment") {
+    renderPaymentReceiptPreviewFromForm();
+  }
 }
 
 function handleRetailSettlementTypeChange() {
@@ -560,6 +668,18 @@ function renderRetailPreview(bill, isDraft = false) {
   preview.innerHTML = getRetailReceiptMarkup(bill);
 }
 
+function renderPaymentReceiptPreview(receipt, isDraft = false) {
+  const preview = document.getElementById("retailPreview");
+  if (!preview) return;
+
+  if (!receipt || !receipt.party_name || Number(receipt.amount || 0) <= 0) {
+    preview.innerHTML = `<div class="thermal-empty">Add party name and amount to preview the payment receipt.</div>`;
+    return;
+  }
+
+  preview.innerHTML = getPaymentReceiptMarkup(receipt);
+}
+
 async function saveRetailBill() {
   const draft = buildRetailBillFromForm();
 
@@ -621,6 +741,121 @@ async function saveRetailBill() {
 
     showToast("Retail bill save failed");
     return null;
+  }
+}
+
+function populatePaymentReceiptForm(receipt) {
+  if (!receipt) return;
+  document.getElementById("paymentReceiptDate").value = receipt.date || formatDateInput(new Date());
+  document.getElementById("paymentReceiptNumber").value = receipt.receipt_number || "";
+  document.getElementById("paymentReceiptCashier").value = receipt.cashier_name || "admin";
+  document.getElementById("paymentReceiptPartyName").value = receipt.party_name || "";
+  document.getElementById("paymentReceiptPartyPhone").value = receipt.party_phone || "";
+  document.getElementById("paymentReceiptPartyAddress").value = receipt.party_address || "";
+  document.getElementById("paymentReceiptDirection").value = receipt.direction || "RECEIVED";
+  document.getElementById("paymentReceiptMode").value = receipt.payment_mode || "Cash";
+  document.getElementById("paymentReceiptAmount").value = receipt.amount ?? "";
+  document.getElementById("paymentReceiptNotes").value = receipt.notes || "";
+
+  currentPaymentReceipt = receipt;
+  paymentReceiptDraftDirty = false;
+  paymentReceiptCompleted = true;
+  setRetailBillingMode("payment");
+  renderPaymentReceiptPreview(currentPaymentReceipt);
+}
+
+async function savePaymentReceipt() {
+  const draft = buildPaymentReceiptFromForm();
+
+  if (!draft.date) {
+    showToast("Select receipt date");
+    return null;
+  }
+  if (!draft.party_name) {
+    showToast("Enter party name");
+    return null;
+  }
+  if (Number(draft.amount || 0) <= 0) {
+    showToast("Enter valid amount");
+    return null;
+  }
+
+  try {
+    const data = await apiCall("/payment-receipts", "POST", JSON.stringify(draft), { "Content-Type": "application/json" });
+    if (data.error) {
+      showToast(data.error);
+      return null;
+    }
+
+    currentPaymentReceipt = data.receipt;
+    paymentReceiptDraftDirty = false;
+    paymentReceiptCompleted = true;
+    renderPaymentReceiptPreview(currentPaymentReceipt);
+    showToast(`Payment receipt ${currentPaymentReceipt.receipt_number} saved`);
+    await loadPaymentReceipts();
+    return currentPaymentReceipt;
+  } catch (e) {
+    console.error(e);
+    showToast("Payment receipt save failed");
+    return null;
+  }
+}
+
+async function loadPaymentReceipts() {
+  const date = document.getElementById("paymentReceiptDate")?.value;
+  const body = document.getElementById("paymentReceiptBody");
+  if (!body) return;
+
+  body.innerHTML = `<tr><td colspan="7" class="empty">Loading payment receipts...</td></tr>`;
+
+  try {
+    const params = new URLSearchParams();
+    if (date) params.set("date", date);
+    const query = params.toString();
+    const data = await optionalApiCall(
+      `/payment-receipts${query ? `?${query}` : ""}`,
+      { results: [] },
+      "GET",
+      null,
+      { cache: false }
+    );
+
+    if (!(data.results || []).length) {
+      body.innerHTML = `<tr><td colspan="7" class="empty">No payment receipts for this date</td></tr>`;
+      return;
+    }
+
+    body.innerHTML = "";
+    data.results.forEach(receipt => {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${escapeHtml(receipt.receipt_number)}</td>
+        <td>${formatDisplayDate(receipt.date)}</td>
+        <td>${escapeHtml(receipt.party_name || "-")}</td>
+        <td>${escapeHtml(receipt.direction || "RECEIVED")}</td>
+        <td>${escapeHtml(receipt.payment_mode || "Cash")}</td>
+        <td>${formatBillMoney(receipt.amount)}</td>
+        <td><button type="button" onclick="openPaymentReceipt('${receipt.id}')">View / Print</button></td>
+      `;
+      body.appendChild(row);
+    });
+  } catch (e) {
+    console.error(e);
+    body.innerHTML = `<tr><td colspan="7" class="empty">Payment receipts failed to load</td></tr>`;
+  }
+}
+
+async function openPaymentReceipt(receiptId) {
+  try {
+    const data = await apiCall(`/payment-receipts/${receiptId}`, "GET", null, {}, { cache: false });
+    if (data.error) {
+      showToast(data.error);
+      return;
+    }
+    populatePaymentReceiptForm(data);
+  } catch (e) {
+    console.error(e);
+    showToast("Unable to open payment receipt");
   }
 }
 
@@ -939,6 +1174,129 @@ async function sendCurrentRetailBill() {
   showToast(customerPhone ? "Bill copied and WhatsApp opened" : "Bill text copied. Add receiver and send");
 }
 
+async function printCurrentPaymentReceipt() {
+  let receipt = currentPaymentReceipt;
+  if (!receipt || paymentReceiptDraftDirty) {
+    receipt = await savePaymentReceipt();
+  }
+
+  if (!receipt || Number(receipt.amount || 0) <= 0) {
+    showToast("No payment receipt ready to print");
+    return;
+  }
+
+  const printWindow = window.open("", "_blank", "width=420,height=820");
+  if (!printWindow) {
+    showToast("Allow popups to print receipt");
+    return;
+  }
+
+  printWindow.document.write(`
+    <html>
+      <head>
+        <title>Payment Receipt ${escapeHtml(receipt.receipt_number)}</title>
+        <style>
+          @page { size: 80mm auto; margin: 0; }
+          body { margin: 0; font-family: "Courier New", monospace; background: white; color: #111; }
+          .bill { width: 76mm; margin: 0 auto; padding: 4mm 2.5mm 5mm; }
+          .thermal-section-row td { padding-top: 5px; font-weight: 700; border-top: 1px dashed #a8adb7; }
+        </style>
+      </head>
+      <body>
+        <div class="bill">${getPaymentReceiptMarkup(receipt)}</div>
+        <script>
+          window.onload = function () {
+            window.print();
+            setTimeout(function () { window.close(); }, 250);
+          };
+        </script>
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+
+  currentPaymentReceipt = receipt;
+  paymentReceiptDraftDirty = false;
+  paymentReceiptCompleted = true;
+}
+
+function getPaymentReceiptShareText(receipt) {
+  const directionLabel = (receipt.direction || "RECEIVED") === "PAID" ? "Amount Paid" : "Amount Received";
+  const lines = [
+    RETAIL_SHOP_PROFILE.name,
+    `Receipt No: ${receipt.receipt_number}`,
+    `Date: ${formatDisplayDate(receipt.date)}`,
+    `Party: ${receipt.party_name || ""}`,
+    `${directionLabel}: Rs ${formatBillMoney(receipt.amount)}`,
+    `Mode: ${receipt.payment_mode || "Cash"}`,
+    `Balance After Payment: Rs ${formatBillMoney(receipt.balance_after)}`
+  ];
+  if (receipt.notes) lines.push(`Notes: ${receipt.notes}`);
+  lines.push(RETAIL_SHOP_PROFILE.phone);
+  return lines.join("\n");
+}
+
+async function sendCurrentPaymentReceipt() {
+  let receipt = currentPaymentReceipt;
+  if (!receipt || paymentReceiptDraftDirty) {
+    receipt = await savePaymentReceipt();
+  }
+
+  if (!receipt || Number(receipt.amount || 0) <= 0) {
+    showToast("No payment receipt ready to send");
+    return;
+  }
+
+  const shareText = getPaymentReceiptShareText(receipt);
+  const partyPhone = String(receipt.party_phone || "").replace(/\D/g, "");
+
+  try {
+    if (navigator.share) {
+      await navigator.share({
+        title: `Payment Receipt ${receipt.receipt_number}`,
+        text: shareText
+      });
+      showToast("Payment receipt shared");
+      return;
+    }
+  } catch (e) {
+    if (e?.name !== "AbortError") {
+      console.error(e);
+    }
+  }
+
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(shareText);
+    } catch (e) {
+      console.error("Clipboard copy failed", e);
+    }
+  }
+
+  const whatsappTarget = partyPhone ? `https://wa.me/${partyPhone}?text=${encodeURIComponent(shareText)}` : `https://wa.me/?text=${encodeURIComponent(shareText)}`;
+  window.open(whatsappTarget, "_blank", "noopener,noreferrer");
+  showToast(partyPhone ? "Payment receipt copied and WhatsApp opened" : "Receipt text copied. Add receiver and send");
+}
+
+function resetPaymentReceiptForm() {
+  document.getElementById("paymentReceiptPartyName").value = "";
+  document.getElementById("paymentReceiptPartyPhone").value = "";
+  document.getElementById("paymentReceiptPartyAddress").value = "";
+  document.getElementById("paymentReceiptAmount").value = "";
+  document.getElementById("paymentReceiptNotes").value = "";
+  document.getElementById("paymentReceiptDirection").value = "RECEIVED";
+  document.getElementById("paymentReceiptMode").value = "Cash";
+  document.getElementById("paymentReceiptCashier").value = "admin";
+  document.getElementById("paymentReceiptDate").value = formatDateInput(new Date());
+  currentPaymentReceipt = null;
+  paymentReceiptDraftDirty = false;
+  paymentReceiptCompleted = false;
+  refreshPaymentReceiptNumber();
+  if (retailBillingMode === "payment") {
+    renderPaymentReceiptPreviewFromForm();
+  }
+}
+
 function resetRetailForm() {
   const draftHasItems = collectRetailItemsFromForm().length > 0;
   if (draftHasItems && !retailBillCompleted) {
@@ -1005,6 +1363,34 @@ function suggestRetailItems(input) {
 function suggestRetailCustomers() {
   const input = document.getElementById("retailCustomerName");
   const suggestions = document.getElementById("retailCustomerSuggestions");
+  const query = input?.value.trim() || "";
+
+  clearTimeout(retailCustomerSuggestTimer);
+
+  if (!suggestions || query.length < 2) {
+    if (suggestions) suggestions.innerHTML = "";
+    return;
+  }
+
+  retailCustomerSuggestTimer = setTimeout(async () => {
+    try {
+      const data = await optionalApiCall(`/party/search?name=${encodeURIComponent(query)}`, { results: [] });
+      suggestions.innerHTML = "";
+      (data.results || []).forEach(party => {
+        const option = document.createElement("option");
+        option.value = party.name;
+        suggestions.appendChild(option);
+      });
+    } catch (e) {
+      console.error(e);
+      suggestions.innerHTML = "";
+    }
+  }, 200);
+}
+
+function suggestPaymentReceiptParties() {
+  const input = document.getElementById("paymentReceiptPartyName");
+  const suggestions = document.getElementById("paymentReceiptPartySuggestions");
   const query = input?.value.trim() || "";
 
   clearTimeout(retailCustomerSuggestTimer);
@@ -1137,6 +1523,53 @@ function getRetailReceiptMarkup(bill) {
 
       ${bill.requires_customer && !bill.customer_name ? `<div class="thermal-notes">Known customer name is required when this bill has credit outstanding.</div>` : ""}
       ${bill.notes ? `<div class="thermal-notes">${escapeHtml(bill.notes)}</div>` : ""}
+
+      <div class="thermal-footer">
+        <p>Thank You</p>
+        <p>Visit Again</p>
+      </div>
+    </div>
+  `;
+}
+
+function getPaymentReceiptMarkup(receipt) {
+  const directionLabel = (receipt.direction || "RECEIVED") === "PAID" ? "Payment Voucher" : "Payment Receipt";
+  const amountLabel = (receipt.direction || "RECEIVED") === "PAID" ? "Amount Paid" : "Amount Received";
+  const partyBlock = (receipt.party_name || receipt.party_phone || receipt.party_address) ? `
+    <div class="thermal-customer">
+      ${receipt.party_name ? `<p><strong>Party Name</strong> : ${escapeHtml(receipt.party_name)}</p>` : ""}
+      ${receipt.party_phone ? `<p><strong>Phone</strong> : ${escapeHtml(receipt.party_phone)}</p>` : ""}
+      ${receipt.party_address ? `<p><strong>Address</strong> : ${escapeHtml(receipt.party_address)}</p>` : ""}
+    </div>
+  ` : "";
+
+  return `
+    <div class="thermal-bill">
+      <div class="thermal-label">${escapeHtml(directionLabel)}</div>
+      <div class="thermal-center">
+        <h3>${escapeHtml(RETAIL_SHOP_PROFILE.name)}</h3>
+        <p>${escapeHtml(RETAIL_SHOP_PROFILE.proprietor)}</p>
+        <p>${escapeHtml(RETAIL_SHOP_PROFILE.address)}</p>
+        <p>Mob. ${escapeHtml(RETAIL_SHOP_PROFILE.phone)}</p>
+      </div>
+
+      <div class="thermal-meta-grid">
+        <div class="thermal-meta-row"><span>Receipt no</span><span>${escapeHtml(receipt.receipt_number)}</span></div>
+        <div class="thermal-meta-row"><span>Date</span><span>${formatDisplayDate(receipt.date)}</span></div>
+        <div class="thermal-meta-row"><span>Time</span><span>${escapeHtml(receipt.time || new Date().toLocaleTimeString("en-GB"))}</span></div>
+        <div class="thermal-meta-row"><span>Handled by</span><span>${escapeHtml(receipt.cashier_name || "admin")}</span></div>
+      </div>
+
+      ${partyBlock}
+
+      <div class="thermal-rule">----------------------------------------------</div>
+      <div class="thermal-summary">
+        <p><span>Direction</span><strong>${escapeHtml(receipt.direction || "RECEIVED")}</strong></p>
+        <p><span>Mode</span><strong>${escapeHtml(receipt.payment_mode || "Cash")}</strong></p>
+        <p class="thermal-total"><span>${amountLabel}</span><strong>${formatBillMoney(receipt.amount)}</strong></p>
+        <p><span>Balance After Payment</span><strong>${formatBillMoney(receipt.balance_after)}</strong></p>
+      </div>
+      ${receipt.notes ? `<div class="thermal-notes">${escapeHtml(receipt.notes)}</div>` : ""}
 
       <div class="thermal-footer">
         <p>Thank You</p>
