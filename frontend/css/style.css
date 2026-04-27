@@ -820,28 +820,45 @@ input[type="file"] {
   padding: 16px 18px 18px;
 }
 
+.retail-admin-toggle[open] > *:not(summary) {
+  display: grid;
+  gap: 16px;
+}
+
 .retail-shortcut-form {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 10px;
+  align-items: stretch;
 }
 
 .retail-shortcut-list-managed {
   margin-top: 12px;
+  display: grid;
+  gap: 10px;
 }
 
 .retail-shortcut-chip-managed {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
   width: 100%;
   border-radius: 12px;
+  flex-wrap: wrap;
+}
+
+.retail-shortcut-chip-managed span {
+  flex: 1 1 240px;
+  min-width: 0;
+  line-height: 1.4;
+  word-break: break-word;
 }
 
 .retail-shortcut-chip-managed button {
   min-height: 30px;
   padding: 6px 10px;
+  flex: 0 0 auto;
 }
 
 .retail-items {
@@ -897,7 +914,20 @@ input[type="file"] {
 }
 
 .dressed-stock-row {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: minmax(180px, 1.3fr) repeat(4, minmax(120px, 1fr)) auto;
+  align-items: stretch;
+}
+
+.retail-setup-panel input,
+.retail-setup-panel select,
+.retail-setup-panel textarea,
+.retail-setup-panel button {
+  width: 100%;
+  min-width: 0;
+}
+
+.retail-setup-panel .retail-item-row {
+  background: #fff;
 }
 
 .retail-stock-summary {

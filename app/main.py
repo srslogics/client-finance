@@ -3274,11 +3274,10 @@ def create_payment_receipt(payload: dict = Body(...), db: Session = Depends(get_
         receipt_number = next_number.get("receipt_number", "1")
 
     existing = db.query(models.PaymentReceipt).filter(
-        models.PaymentReceipt.date == target_date,
         models.PaymentReceipt.receipt_number == receipt_number
     ).first()
     if existing:
-        return {"error": "Receipt number already exists for this date"}
+        return {"error": "Receipt number already exists"}
 
     party_phone = str(payload.get("party_phone") or "").strip()
     party_address = str(payload.get("party_address") or "").strip()
