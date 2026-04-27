@@ -48,16 +48,16 @@ const RETAIL_MODE_FIELDS = {
     notes: "retailNotes"
   },
   dressed: {
-    date: "dressedDate",
-    billNumber: "dressedBillNumber",
-    cashier: "dressedCashier",
-    settlementType: "dressedSettlementType",
-    paymentMode: "dressedPaymentMode",
-    customerName: "dressedCustomerName",
-    customerPhone: "dressedCustomerPhone",
-    customerAddress: "dressedCustomerAddress",
-    paidAmount: "dressedPaidAmount",
-    notes: "dressedNotes"
+    date: "retailDate",
+    billNumber: "retailBillNumber",
+    cashier: "retailCashier",
+    settlementType: "retailSettlementType",
+    paymentMode: "retailPaymentMode",
+    customerName: "retailCustomerName",
+    customerPhone: "retailCustomerPhone",
+    customerAddress: "retailCustomerAddress",
+    paidAmount: "retailPaidAmount",
+    notes: "retailNotes"
   }
 };
 
@@ -75,43 +75,35 @@ function initRetailPage() {
   paymentReceiptHistoryLoaded = false;
   dressedStockLoadedForDate = "";
   const regularDate = retailField("regular", "date");
-  const dressedDate = retailField("dressed", "date");
-  if (!regularDate && !dressedDate) return;
+  if (!regularDate) return;
 
-  ["regular", "dressed"].forEach(mode => {
-    const dateInput = retailField(mode, "date");
-    if (dateInput) {
-      dateInput.value = formatDateInput(new Date());
-      dateInput.addEventListener("change", async () => {
-        await refreshRetailBillNumber(mode);
-        if (mode === retailBillingMode) {
-          await loadRetailBills();
-          if (retailBillingMode === "dressed") {
-            await ensureDressedStockLoaded();
-          }
-          scheduleRetailPreviewRender();
-        }
-      });
+  regularDate.value = formatDateInput(new Date());
+  regularDate.addEventListener("change", async () => {
+    await refreshRetailBillNumber();
+    await loadRetailBills();
+    if (retailBillingMode === "dressed") {
+      await ensureDressedStockLoaded();
     }
-
-    Object.values(RETAIL_MODE_FIELDS[mode]).forEach(id => {
-      const input = document.getElementById(id);
-      if (!input) return;
-      input.addEventListener("input", markRetailDraftDirty);
-      input.addEventListener("change", markRetailDraftDirty);
-    });
-
-    const settlementType = retailField(mode, "settlementType");
-    if (settlementType) {
-      settlementType.addEventListener("change", () => handleRetailSettlementTypeChange(mode));
-    }
-
-    const customerNameInput = retailField(mode, "customerName");
-    if (customerNameInput) {
-      customerNameInput.addEventListener("change", () => hydrateRetailCustomerProfile(customerNameInput.value, mode));
-      customerNameInput.addEventListener("blur", () => hydrateRetailCustomerProfile(customerNameInput.value, mode));
-    }
+    scheduleRetailPreviewRender();
   });
+
+  Array.from(new Set(Object.values(RETAIL_MODE_FIELDS.regular))).forEach(id => {
+    const input = document.getElementById(id);
+    if (!input) return;
+    input.addEventListener("input", markRetailDraftDirty);
+    input.addEventListener("change", markRetailDraftDirty);
+  });
+
+  const settlementType = retailField("regular", "settlementType");
+  if (settlementType) {
+    settlementType.addEventListener("change", () => handleRetailSettlementTypeChange());
+  }
+
+  const customerNameInput = retailField("regular", "customerName");
+  if (customerNameInput) {
+    customerNameInput.addEventListener("change", () => hydrateRetailCustomerProfile(customerNameInput.value));
+    customerNameInput.addEventListener("blur", () => hydrateRetailCustomerProfile(customerNameInput.value));
+  }
 
   const paymentReceiptDate = document.getElementById("paymentReceiptDate");
   if (paymentReceiptDate) {
@@ -158,8 +150,7 @@ function initRetailPage() {
   renderRetailOfflineBanner();
   syncRetailSettlementUi();
   setRetailBillingMode("regular");
-  refreshRetailBillNumber("regular");
-  refreshRetailBillNumber("dressed");
+  refreshRetailBillNumber();
   scheduleRetailPreviewRender();
   loadRetailBills();
   syncPendingRetailBills(true);
@@ -171,41 +162,51 @@ function setRetailBillingMode(mode) {
   const regularButton = document.getElementById("retailModeRegular");
   const dressedButton = document.getElementById("retailModeDressed");
   const paymentButton = document.getElementById("retailModePayment");
+  const salesSection = document.getElementById("retailSalesSection");
   const regularSection = document.getElementById("retailRegularSection");
   const dressedSection = document.getElementById("retailDressedSection");
   const paymentSection = document.getElementById("paymentReceiptSection");
-  const retailSalesHeader = document.getElementById("retailSalesHeader");
   const setupSection = document.querySelector(".retail-setup-panel");
+  const dressedStockSetupSection = document.getElementById("dressedStockSetupSection");
+  const shortcutLineType = document.getElementById("shortcutLineType");
+  const shortcutManagerHelp = document.getElementById("shortcutManagerHelp");
   const retailHistorySection = document.getElementById("retailBillHistorySection");
   const paymentHistorySection = document.getElementById("paymentReceiptHistorySection");
   const modeTitle = document.getElementById("retailModeTitle");
   const previewTitle = document.getElementById("retailPreviewTitle");
-  const historyTitle = document.getElementById("retailHistoryTitle");
+  const addItemButton = document.getElementById("retailAddItemButton");
 
   if (regularButton) regularButton.classList.toggle("active", retailBillingMode === "regular");
   if (dressedButton) dressedButton.classList.toggle("active", retailBillingMode === "dressed");
   if (paymentButton) paymentButton.classList.toggle("active", retailBillingMode === "payment");
+  if (salesSection) salesSection.style.display = retailBillingMode === "payment" ? "none" : "";
   if (regularSection) regularSection.style.display = retailBillingMode === "regular" ? "" : "none";
   if (dressedSection) dressedSection.style.display = retailBillingMode === "dressed" ? "" : "none";
   if (paymentSection) paymentSection.style.display = retailBillingMode === "payment" ? "" : "none";
-  if (retailSalesHeader) retailSalesHeader.style.display = retailBillingMode === "payment" ? "none" : "";
-  if (setupSection) setupSection.style.display = retailBillingMode === "dressed" ? "" : "none";
+  if (setupSection) setupSection.style.display = retailBillingMode === "payment" ? "none" : "";
+  if (dressedStockSetupSection) dressedStockSetupSection.style.display = retailBillingMode === "dressed" ? "" : "none";
+  if (shortcutLineType) shortcutLineType.value = retailBillingMode === "dressed" ? "DRESSED" : "STANDARD";
+  if (shortcutManagerHelp) shortcutManagerHelp.innerText = retailBillingMode === "dressed"
+    ? "Add your own quick dressed items with default rate."
+    : "Add your own quick regular items with default rate.";
   if (retailHistorySection) retailHistorySection.style.display = retailBillingMode === "payment" ? "none" : "";
   if (paymentHistorySection) paymentHistorySection.style.display = retailBillingMode === "payment" ? "" : "none";
   if (modeTitle) modeTitle.innerText = retailBillingMode === "dressed" ? "Dressed Billing" : retailBillingMode === "payment" ? "Payment Receipt" : "Regular Billing";
-  if (previewTitle) previewTitle.innerText = retailBillingMode === "dressed" ? "Dressed Bill Preview" : retailBillingMode === "payment" ? "Payment Receipt Preview" : "Regular Bill Preview";
-  if (historyTitle) historyTitle.innerText = retailBillingMode === "dressed" ? "Recent Dressed Bills" : "Recent Regular Bills";
+  if (previewTitle) previewTitle.innerText = retailBillingMode === "payment" ? "Payment Receipt Preview" : "Retail Bill Preview";
+  if (addItemButton) addItemButton.innerText = retailBillingMode === "dressed" ? "Add Dressed Item" : "Add Regular Item";
 
   if (retailBillingMode === "payment") {
     ensurePaymentReceiptModeReady();
     schedulePaymentReceiptPreviewRender();
-  } else if (currentRetailBill && !retailDraftDirty && getRetailBillMode(currentRetailBill) === retailBillingMode) {
-    renderRetailPreview(currentRetailBill);
   } else {
     if (retailBillingMode === "dressed") {
       ensureDressedModeReady();
     }
+    if (currentRetailBill && !retailDraftDirty && getRetailBillMode(currentRetailBill) === retailBillingMode) {
+      renderRetailPreview(currentRetailBill);
+    }
     scheduleRetailPreviewRender();
+    loadRetailBills();
   }
 }
 
@@ -220,7 +221,7 @@ function normalizeRetailBillMode(bill) {
 }
 
 function getActiveRetailDate() {
-  return retailField(retailBillingMode, "date")?.value || "";
+  return retailField("regular", "date")?.value || "";
 }
 
 function isCurrentRetailBillForActiveMode() {
@@ -252,7 +253,7 @@ async function ensureDressedModeReady() {
 }
 
 async function ensureDressedStockLoaded() {
-  const date = document.getElementById("retailDate")?.value || "";
+  const date = retailField("regular", "date")?.value || "";
   if (!date) return;
   if (dressedStockLoadedForDate === date && dressedStockCache.length) return;
   await loadDressedStock();
@@ -329,7 +330,9 @@ function setRetailShortcuts(shortcuts) {
 function saveRetailShortcut() {
   const name = document.getElementById("shortcutName")?.value.trim();
   const rate = Number(document.getElementById("shortcutRate")?.value || 0);
-  const lineType = document.getElementById("shortcutLineType")?.value || "STANDARD";
+  const lineType = retailBillingMode === "dressed"
+    ? "DRESSED"
+    : (document.getElementById("shortcutLineType")?.value || "STANDARD");
   const unit = document.getElementById("shortcutUnit")?.value || "KGS";
 
   if (!name) {
@@ -359,7 +362,9 @@ function renderShortcutManagerList() {
   const container = document.getElementById("retailShortcutManagerList");
   if (!container) return;
   container.innerHTML = "";
-  getRetailShortcuts().forEach(shortcut => {
+  const activeLineType = retailBillingMode === "dressed" ? "DRESSED" : "STANDARD";
+  const visibleShortcuts = getRetailShortcuts().filter(shortcut => ((shortcut.line_type || "STANDARD").toUpperCase() === activeLineType));
+  visibleShortcuts.forEach(shortcut => {
     const chip = document.createElement("div");
     chip.className = "retail-shortcut-chip retail-shortcut-chip-managed";
     const text = document.createElement("span");
@@ -372,6 +377,9 @@ function renderShortcutManagerList() {
     chip.appendChild(button);
     container.appendChild(chip);
   });
+  if (!visibleShortcuts.length) {
+    container.innerHTML = `<span class="retail-shortcut-empty">No ${retailBillingMode === "dressed" ? "dressed" : "regular"} shortcuts saved yet.</span>`;
+  }
 }
 
 async function refreshRetailBillNumber(mode = retailBillingMode) {
@@ -1034,11 +1042,10 @@ async function loadRetailBills() {
         )
       : { results: [] };
 
-    const mergedResults = mergeRetailBillResults(data.results || [], pendingBills)
-      .filter(bill => normalizeRetailBillMode(bill) === retailBillingMode);
+    const mergedResults = mergeRetailBillResults(data.results || [], pendingBills);
 
     if (!mergedResults.length) {
-      body.innerHTML = `<tr><td colspan="8" class="empty">No ${retailBillingMode === "dressed" ? "dressed" : "regular"} bills for this date</td></tr>`;
+      body.innerHTML = `<tr><td colspan="8" class="empty">No retail bills for this date</td></tr>`;
       return;
     }
 
@@ -1525,16 +1532,16 @@ function resetRetailForm() {
   if (regularRows) regularRows.innerHTML = "";
   if (dressedRows) dressedRows.innerHTML = "";
 
-  retailField(retailBillingMode, "customerName").value = "";
-  retailField(retailBillingMode, "customerPhone").value = "";
-  retailField(retailBillingMode, "customerAddress").value = "";
-  retailField(retailBillingMode, "paidAmount").value = "";
-  retailField(retailBillingMode, "notes").value = "";
-  retailField(retailBillingMode, "settlementType").value = "paid";
-  retailField(retailBillingMode, "paymentMode").value = "Cash";
-  retailField(retailBillingMode, "cashier").value = "admin";
-  retailField(retailBillingMode, "date").value = formatDateInput(new Date());
-  syncRetailSettlementUi(retailBillingMode);
+  retailField("regular", "customerName").value = "";
+  retailField("regular", "customerPhone").value = "";
+  retailField("regular", "customerAddress").value = "";
+  retailField("regular", "paidAmount").value = "";
+  retailField("regular", "notes").value = "";
+  retailField("regular", "settlementType").value = "paid";
+  retailField("regular", "paymentMode").value = "Cash";
+  retailField("regular", "cashier").value = "admin";
+  retailField("regular", "date").value = formatDateInput(new Date());
+  syncRetailSettlementUi();
 
   if (retailBillingMode === "dressed") {
     addDressedRetailRow();
@@ -1545,8 +1552,13 @@ function resetRetailForm() {
   retailDraftDirty = false;
   retailBillCompleted = false;
   renderRetailOfflineBanner();
-  refreshRetailBillNumber(retailBillingMode);
+  refreshRetailBillNumber();
   scheduleRetailPreviewRender();
+}
+
+function addRetailItemForCurrentMode() {
+  if (retailBillingMode === "dressed") addDressedRetailRow();
+  else addRegularRetailRow();
 }
 
 function suggestRetailItems(input) {

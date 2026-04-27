@@ -378,110 +378,79 @@ function loadPage(page) {
                 <button type="button" id="retailModePayment" class="retail-mode-button" onclick="setRetailBillingMode('payment')">Payment Receipt</button>
               </div>
 
-              <div id="retailRegularSection" class="retail-billing-panel retail-billing-section">
-                <div class="retail-shortcuts-head">
-                  <span>Regular Bill Details</span>
-                  <p>This section is only for regular chicken billing.</p>
-                </div>
-                <div class="retail-form-grid">
-                  <input type="date" id="retailDate" aria-label="Regular bill date">
-                  <input type="text" id="retailBillNumber" placeholder="Bill no">
-                  <input type="text" id="retailCashier" placeholder="Cashier name" value="admin">
-                  <select id="retailSettlementType">
-                    <option value="paid">Paid in Full</option>
-                    <option value="partial">Part Payment</option>
-                    <option value="credit">Credit</option>
-                  </select>
-                  <select id="retailPaymentMode">
-                    <option value="Cash">Cash</option>
-                    <option value="Online">Online</option>
-                    <option value="Bank">Bank</option>
-                    <option value="Credit">Credit</option>
-                  </select>
-                  <input type="text" id="retailCustomerName" placeholder="Customer name (optional)" list="retailCustomerSuggestions" autocomplete="off" oninput="suggestRetailCustomers('regular')">
-                  <input type="text" id="retailCustomerPhone" placeholder="Phone (optional)">
-                  <input type="text" id="retailCustomerAddress" placeholder="Address (optional)">
-                </div>
-
+              <div id="retailSalesSection" class="retail-billing-panel retail-billing-section">
                 <div class="retail-shortcuts">
                   <div class="retail-shortcuts-head">
-                    <span>Regular Shortcuts</span>
-                    <p>Tap an item to add it with its default rate.</p>
+                    <span>Bill Details</span>
+                    <p>These details are shared for the current regular or dressed bill.</p>
                   </div>
-                  <div id="retailRegularShortcutItems" class="retail-shortcut-list"></div>
+                  <div class="retail-form-grid">
+                    <input type="date" id="retailDate" aria-label="Retail bill date">
+                    <input type="text" id="retailBillNumber" placeholder="Bill no">
+                    <input type="text" id="retailCashier" placeholder="Cashier name" value="admin">
+                    <select id="retailSettlementType">
+                      <option value="paid">Paid in Full</option>
+                      <option value="partial">Part Payment</option>
+                      <option value="credit">Credit</option>
+                    </select>
+                    <select id="retailPaymentMode">
+                      <option value="Cash">Cash</option>
+                      <option value="Online">Online</option>
+                      <option value="Bank">Bank</option>
+                      <option value="Credit">Credit</option>
+                    </select>
+                    <input type="text" id="retailCustomerName" placeholder="Customer name (optional)" list="retailCustomerSuggestions" autocomplete="off" oninput="suggestRetailCustomers()">
+                    <input type="text" id="retailCustomerPhone" placeholder="Phone (optional)">
+                    <input type="text" id="retailCustomerAddress" placeholder="Address (optional)">
+                  </div>
                 </div>
 
-                <div class="retail-shortcuts-head">
-                  <span>Regular Billing</span>
-                  <p>Regular chicken billing with automatic rate fill from shortcuts.</p>
+                <div id="retailRegularSection" class="retail-billing-section">
+                  <div class="retail-shortcuts">
+                    <div class="retail-shortcuts-head">
+                      <span>Regular Shortcuts</span>
+                      <p>Tap an item to add it with its default rate.</p>
+                    </div>
+                    <div id="retailRegularShortcutItems" class="retail-shortcut-list"></div>
+                  </div>
+
+                  <div class="retail-shortcuts-head">
+                    <span>Regular Billing</span>
+                    <p>Regular chicken billing with automatic rate fill from shortcuts.</p>
+                  </div>
+                  <div id="retailRegularRows" class="retail-items retail-items-horizontal"></div>
                 </div>
-                <div id="retailRegularRows" class="retail-items retail-items-horizontal"></div>
+
+                <div id="retailDressedSection" class="retail-billing-section" style="display:none;">
+                  <div class="retail-shortcuts">
+                    <div class="retail-shortcuts-head">
+                      <span>Dressed Shortcuts</span>
+                      <p>Tap an item to add it to the dressed billing side with its default rate.</p>
+                    </div>
+                    <div id="retailDressedShortcutItems" class="retail-shortcut-list"></div>
+                  </div>
+
+                  <div class="retail-shortcuts">
+                    <div class="retail-shortcuts-head">
+                      <span>Available Dressed Stock</span>
+                      <p>As dressed bills are saved, the remaining dressed weight goes down automatically.</p>
+                    </div>
+                    <div id="dressedStockSummary" class="retail-stock-summary"></div>
+                  </div>
+
+                  <div class="retail-shortcuts-head">
+                    <span>Dressed Billing</span>
+                    <p>Bill dressed chicken separately. Amount and rate stay tied to dressed kg.</p>
+                  </div>
+                  <div id="retailDressedRows" class="retail-items retail-items-horizontal"></div>
+                </div>
+
                 <div class="retail-form-grid retail-notes-grid">
                   <input type="number" id="retailPaidAmount" placeholder="Paid amount" min="0" step="0.01">
-                  <textarea id="retailNotes" placeholder="Notes for regular bill"></textarea>
+                  <textarea id="retailNotes" placeholder="Notes for bill"></textarea>
                 </div>
                 <div class="retail-item-actions">
-                  <button type="button" onclick="addRegularRetailRow()">Add Regular Item</button>
-                </div>
-                <div class="report-actions retail-actions">
-                  <button type="button" onclick="saveRetailBill()">Save Bill</button>
-                  <button type="button" onclick="sendCurrentRetailBill()">Send on WhatsApp</button>
-                  <button type="button" onclick="printCurrentRetailBill()">Print Bill</button>
-                </div>
-              </div>
-
-              <div id="retailDressedSection" class="retail-billing-panel retail-billing-section" style="display:none;">
-                <div class="retail-shortcuts-head">
-                  <span>Dressed Bill Details</span>
-                  <p>This section is only for dressed chicken billing.</p>
-                </div>
-                <div class="retail-form-grid">
-                  <input type="date" id="dressedDate" aria-label="Dressed bill date">
-                  <input type="text" id="dressedBillNumber" placeholder="Bill no">
-                  <input type="text" id="dressedCashier" placeholder="Cashier name" value="admin">
-                  <select id="dressedSettlementType">
-                    <option value="paid">Paid in Full</option>
-                    <option value="partial">Part Payment</option>
-                    <option value="credit">Credit</option>
-                  </select>
-                  <select id="dressedPaymentMode">
-                    <option value="Cash">Cash</option>
-                    <option value="Online">Online</option>
-                    <option value="Bank">Bank</option>
-                    <option value="Credit">Credit</option>
-                  </select>
-                  <input type="text" id="dressedCustomerName" placeholder="Customer name (optional)" list="retailCustomerSuggestions" autocomplete="off" oninput="suggestRetailCustomers('dressed')">
-                  <input type="text" id="dressedCustomerPhone" placeholder="Phone (optional)">
-                  <input type="text" id="dressedCustomerAddress" placeholder="Address (optional)">
-                </div>
-
-                <div class="retail-shortcuts">
-                  <div class="retail-shortcuts-head">
-                    <span>Dressed Shortcuts</span>
-                    <p>Tap an item to add it to the dressed billing side with its default rate.</p>
-                  </div>
-                  <div id="retailDressedShortcutItems" class="retail-shortcut-list"></div>
-                </div>
-
-                <div class="retail-shortcuts">
-                  <div class="retail-shortcuts-head">
-                    <span>Available Dressed Stock</span>
-                    <p>As dressed bills are saved, the remaining dressed weight goes down automatically.</p>
-                  </div>
-                  <div id="dressedStockSummary" class="retail-stock-summary"></div>
-                </div>
-
-                <div class="retail-shortcuts-head">
-                  <span>Dressed Billing</span>
-                  <p>Bill dressed chicken separately. Amount and rate stay tied to dressed kg.</p>
-                </div>
-                <div id="retailDressedRows" class="retail-items retail-items-horizontal"></div>
-                <div class="retail-form-grid retail-notes-grid">
-                  <input type="number" id="dressedPaidAmount" placeholder="Paid amount" min="0" step="0.01">
-                  <textarea id="dressedNotes" placeholder="Notes for dressed bill"></textarea>
-                </div>
-                <div class="retail-item-actions">
-                  <button type="button" onclick="addDressedRetailRow()">Add Dressed Item</button>
+                  <button type="button" id="retailAddItemButton" onclick="addRetailItemForCurrentMode()">Add Item</button>
                 </div>
                 <div class="report-actions retail-actions">
                   <button type="button" onclick="saveRetailBill()">Save Bill</button>
@@ -534,14 +503,14 @@ function loadPage(page) {
                   <summary>Setup Tools</summary>
 
                   <div class="retail-shortcut-manager">
-                    <div class="retail-shortcuts-head">
-                      <span>Shortcut Manager</span>
-                      <p>Add your own quick items with default rate and billing type.</p>
+                  <div class="retail-shortcuts-head">
+                    <span>Shortcut Manager</span>
+                      <p id="shortcutManagerHelp">Add your own quick items with default rate for this billing type.</p>
                     </div>
                     <div class="retail-shortcut-form">
                       <input type="text" id="shortcutName" placeholder="Item name">
                       <input type="number" id="shortcutRate" placeholder="Default rate" min="0" step="0.01">
-                      <select id="shortcutLineType">
+                      <select id="shortcutLineType" style="display:none;">
                         <option value="STANDARD">Regular</option>
                         <option value="DRESSED">Dressed</option>
                       </select>
@@ -554,7 +523,7 @@ function loadPage(page) {
                     <div id="retailShortcutManagerList" class="retail-shortcut-list retail-shortcut-list-managed"></div>
                   </div>
 
-                  <div class="retail-shortcuts">
+                  <div class="retail-shortcuts" id="dressedStockSetupSection">
                     <div class="retail-shortcuts-head">
                       <span>Dressed Stock Entry</span>
                       <p>Enter live stock and available dressed weight. Bills deduct dressed weight automatically.</p>
@@ -575,7 +544,7 @@ function loadPage(page) {
               <div class="section-head">
                 <div>
                   <span>Print Preview</span>
-                  <h2 id="retailPreviewTitle">Regular Bill Preview</h2>
+                  <h2 id="retailPreviewTitle">Retail Bill Preview</h2>
                 </div>
               </div>
               <div id="retailPreview" class="thermal-preview"></div>
@@ -586,7 +555,7 @@ function loadPage(page) {
             <div class="section-head">
               <div>
                 <span>Saved Bills</span>
-                <h2 id="retailHistoryTitle">Recent Regular Bills</h2>
+                <h2 id="retailHistoryTitle">Recent Retail Bills</h2>
               </div>
               <button type="button" onclick="loadRetailBills()">Refresh</button>
             </div>
