@@ -1235,6 +1235,11 @@ async function printCurrentRetailBill() {
           .thermal-items-table th:nth-child(4), .thermal-items-table td:nth-child(4) { width: 12%; text-align: right; }
           .thermal-items-table th:nth-child(5), .thermal-items-table td:nth-child(5) { width: 14%; text-align: right; }
           .thermal-items-table th:nth-child(6), .thermal-items-table td:nth-child(6) { width: 24%; text-align: right; }
+          .thermal-items-table.thermal-items-table-dressed th:nth-child(1), .thermal-items-table.thermal-items-table-dressed td:nth-child(1) { width: 8%; }
+          .thermal-items-table.thermal-items-table-dressed th:nth-child(2), .thermal-items-table.thermal-items-table-dressed td:nth-child(2) { width: 38%; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+          .thermal-items-table.thermal-items-table-dressed th:nth-child(3), .thermal-items-table.thermal-items-table-dressed td:nth-child(3) { width: 18%; text-align: right; }
+          .thermal-items-table.thermal-items-table-dressed th:nth-child(4), .thermal-items-table.thermal-items-table-dressed td:nth-child(4) { width: 16%; text-align: right; }
+          .thermal-items-table.thermal-items-table-dressed th:nth-child(5), .thermal-items-table.thermal-items-table-dressed td:nth-child(5) { width: 20%; text-align: right; }
           .thermal-section-row td { padding-top: 5px; font-weight: 700; border-top: 1px dashed #a8adb7; }
           .thermal-summary { margin-top: 6px; font-size: 11px; }
           .thermal-summary p, .thermal-summary-row { display: flex; justify-content: space-between; gap: 10px; margin: 2px 0; }
@@ -1732,6 +1737,11 @@ function getThermalReceiptShareStyles() {
     .thermal-items-table th:nth-child(4), .thermal-items-table td:nth-child(4) { width: 12%; }
     .thermal-items-table th:nth-child(5), .thermal-items-table td:nth-child(5) { width: 14%; }
     .thermal-items-table th:nth-child(6), .thermal-items-table td:nth-child(6) { width: 24%; }
+    .thermal-items-table.thermal-items-table-dressed th:nth-child(1), .thermal-items-table.thermal-items-table-dressed td:nth-child(1) { width: 8%; }
+    .thermal-items-table.thermal-items-table-dressed th:nth-child(2), .thermal-items-table.thermal-items-table-dressed td:nth-child(2) { width: 38%; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+    .thermal-items-table.thermal-items-table-dressed th:nth-child(3), .thermal-items-table.thermal-items-table-dressed td:nth-child(3) { width: 18%; text-align: right; }
+    .thermal-items-table.thermal-items-table-dressed th:nth-child(4), .thermal-items-table.thermal-items-table-dressed td:nth-child(4) { width: 16%; text-align: right; }
+    .thermal-items-table.thermal-items-table-dressed th:nth-child(5), .thermal-items-table.thermal-items-table-dressed td:nth-child(5) { width: 20%; text-align: right; }
     .thermal-subrow td { color: #5f6b7a; font-size: 9px; padding-top: 0; padding-bottom: 2px; }
     .thermal-section-row td { padding-top: 5px; font-weight: 700; border-top: 1px dashed #a8adb7; }
     .thermal-total { margin-top: 4px; padding-top: 4px; border-top: 1px dashed #8c98a8; font-weight: 800; }
@@ -1828,6 +1838,8 @@ function downloadFile(file) {
 }
 
 function getRetailReceiptMarkup(bill) {
+  const isDressedOnlyBill = (bill.items || []).length > 0 && (bill.items || []).every(item => (item.line_type || "STANDARD").toUpperCase() === "DRESSED");
+
   const renderReceiptRows = (items, sectionLabel, startIndex) => {
     if (!items.length) return "";
     const rows = items.map((item, index) => {
@@ -1836,6 +1848,17 @@ function getRetailReceiptMarkup(bill) {
       const kgsText = Number(item.weight || 0).toFixed(3);
       const mrpText = lineType === "DRESSED" ? "" : formatBillRate(item.rate);
       const rateText = formatBillRate(item.rate);
+      if (isDressedOnlyBill) {
+        return `
+          <tr>
+            <td>${startIndex + index + 1}</td>
+            <td>${escapeHtml(item.item_name)}</td>
+            <td>${kgsText}</td>
+            <td>${rateText}</td>
+            <td>${formatBillMoney(item.amount)}</td>
+          </tr>
+        `;
+      }
       return `
         <tr>
           <td>${startIndex + index + 1}</td>
@@ -1890,15 +1913,25 @@ function getRetailReceiptMarkup(bill) {
       ${customerBlock}
 
       <div class="thermal-rule">----------------------------------------------</div>
-      <table class="thermal-items-table">
+      <table class="thermal-items-table${isDressedOnlyBill ? " thermal-items-table-dressed" : ""}">
         <thead>
           <tr>
-            <th>Sl</th>
-            <th>Item Name</th>
-            <th>Qty</th>
-            <th>MRP</th>
-            <th>Rate</th>
-            <th>Amount</th>
+            ${isDressedOnlyBill
+              ? `
+                <th>Sl</th>
+                <th>Item Name</th>
+                <th>KGS</th>
+                <th>Rate</th>
+                <th>Amount</th>
+              `
+              : `
+                <th>Sl</th>
+                <th>Item Name</th>
+                <th>Qty</th>
+                <th>MRP</th>
+                <th>Rate</th>
+                <th>Amount</th>
+              `}
           </tr>
         </thead>
         <tbody>${itemsHtml}</tbody>
@@ -1906,7 +1939,7 @@ function getRetailReceiptMarkup(bill) {
       <div class="thermal-rule">----------------------------------------------</div>
 
       <div class="thermal-summary">
-        <p><span>Total Item(s): ${bill.items.length}</span><span>/Qty : ${formatBillNag(bill.total_nag || bill.total_quantity || 0)}</span></p>
+        <p><span>Total Item(s): ${bill.items.length}</span><span>${isDressedOnlyBill ? `KGS : ${Number(bill.total_weight || 0).toFixed(3)}` : `/Qty : ${formatBillNag(bill.total_nag || bill.total_quantity || 0)}`}</span></p>
         <p><span>Total Kgs</span><strong>${Number(bill.total_weight || 0).toFixed(3)}</strong></p>
         <p class="thermal-total"><span>TOTAL</span><strong>${formatBillMoney(bill.total_amount)}</strong></p>
         <p><span>${escapeHtml(bill.payment_mode || "Cash")} Payment</span><strong>${formatBillMoney(bill.paid_amount)}</strong></p>
