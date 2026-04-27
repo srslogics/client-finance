@@ -369,11 +369,22 @@ function loadPage(page) {
                 <button type="button" onclick="resetRetailForm()">New Bill</button>
               </div>
 
-              <div id="retailSalesHeader">
-                <div id="retailOfflineBanner" class="notice info" style="display:none;"></div>
+              <div id="retailOfflineBanner" class="notice info" style="display:none;"></div>
+              <datalist id="retailCustomerSuggestions"></datalist>
 
+              <div class="retail-mode-switch" role="tablist" aria-label="Retail billing mode">
+                <button type="button" id="retailModeRegular" class="retail-mode-button active" onclick="setRetailBillingMode('regular')">Regular Billing</button>
+                <button type="button" id="retailModeDressed" class="retail-mode-button" onclick="setRetailBillingMode('dressed')">Dressed Billing</button>
+                <button type="button" id="retailModePayment" class="retail-mode-button" onclick="setRetailBillingMode('payment')">Payment Receipt</button>
+              </div>
+
+              <div id="retailRegularSection" class="retail-billing-panel retail-billing-section">
+                <div class="retail-shortcuts-head">
+                  <span>Regular Bill Details</span>
+                  <p>This section is only for regular chicken billing.</p>
+                </div>
                 <div class="retail-form-grid">
-                  <input type="date" id="retailDate" aria-label="Retail bill date">
+                  <input type="date" id="retailDate" aria-label="Regular bill date">
                   <input type="text" id="retailBillNumber" placeholder="Bill no">
                   <input type="text" id="retailCashier" placeholder="Cashier name" value="admin">
                   <select id="retailSettlementType">
@@ -387,20 +398,11 @@ function loadPage(page) {
                     <option value="Bank">Bank</option>
                     <option value="Credit">Credit</option>
                   </select>
-                  <input type="text" id="retailCustomerName" placeholder="Customer name (optional)" list="retailCustomerSuggestions" autocomplete="off" oninput="suggestRetailCustomers()">
-                  <datalist id="retailCustomerSuggestions"></datalist>
+                  <input type="text" id="retailCustomerName" placeholder="Customer name (optional)" list="retailCustomerSuggestions" autocomplete="off" oninput="suggestRetailCustomers('regular')">
                   <input type="text" id="retailCustomerPhone" placeholder="Phone (optional)">
                   <input type="text" id="retailCustomerAddress" placeholder="Address (optional)">
                 </div>
-              </div>
 
-              <div class="retail-mode-switch" role="tablist" aria-label="Retail billing mode">
-                <button type="button" id="retailModeRegular" class="retail-mode-button active" onclick="setRetailBillingMode('regular')">Regular Billing</button>
-                <button type="button" id="retailModeDressed" class="retail-mode-button" onclick="setRetailBillingMode('dressed')">Dressed Billing</button>
-                <button type="button" id="retailModePayment" class="retail-mode-button" onclick="setRetailBillingMode('payment')">Payment Receipt</button>
-              </div>
-
-              <div id="retailRegularSection" class="retail-billing-panel retail-billing-section">
                 <div class="retail-shortcuts">
                   <div class="retail-shortcuts-head">
                     <span>Regular Shortcuts</span>
@@ -414,12 +416,45 @@ function loadPage(page) {
                   <p>Regular chicken billing with automatic rate fill from shortcuts.</p>
                 </div>
                 <div id="retailRegularRows" class="retail-items retail-items-horizontal"></div>
+                <div class="retail-form-grid retail-notes-grid">
+                  <input type="number" id="retailPaidAmount" placeholder="Paid amount" min="0" step="0.01">
+                  <textarea id="retailNotes" placeholder="Notes for regular bill"></textarea>
+                </div>
                 <div class="retail-item-actions">
                   <button type="button" onclick="addRegularRetailRow()">Add Regular Item</button>
+                </div>
+                <div class="report-actions retail-actions">
+                  <button type="button" onclick="saveRetailBill()">Save Bill</button>
+                  <button type="button" onclick="sendCurrentRetailBill()">Send on WhatsApp</button>
+                  <button type="button" onclick="printCurrentRetailBill()">Print Bill</button>
                 </div>
               </div>
 
               <div id="retailDressedSection" class="retail-billing-panel retail-billing-section" style="display:none;">
+                <div class="retail-shortcuts-head">
+                  <span>Dressed Bill Details</span>
+                  <p>This section is only for dressed chicken billing.</p>
+                </div>
+                <div class="retail-form-grid">
+                  <input type="date" id="dressedDate" aria-label="Dressed bill date">
+                  <input type="text" id="dressedBillNumber" placeholder="Bill no">
+                  <input type="text" id="dressedCashier" placeholder="Cashier name" value="admin">
+                  <select id="dressedSettlementType">
+                    <option value="paid">Paid in Full</option>
+                    <option value="partial">Part Payment</option>
+                    <option value="credit">Credit</option>
+                  </select>
+                  <select id="dressedPaymentMode">
+                    <option value="Cash">Cash</option>
+                    <option value="Online">Online</option>
+                    <option value="Bank">Bank</option>
+                    <option value="Credit">Credit</option>
+                  </select>
+                  <input type="text" id="dressedCustomerName" placeholder="Customer name (optional)" list="retailCustomerSuggestions" autocomplete="off" oninput="suggestRetailCustomers('dressed')">
+                  <input type="text" id="dressedCustomerPhone" placeholder="Phone (optional)">
+                  <input type="text" id="dressedCustomerAddress" placeholder="Address (optional)">
+                </div>
+
                 <div class="retail-shortcuts">
                   <div class="retail-shortcuts-head">
                     <span>Dressed Shortcuts</span>
@@ -441,8 +476,17 @@ function loadPage(page) {
                   <p>Bill dressed chicken separately. Amount and rate stay tied to dressed kg.</p>
                 </div>
                 <div id="retailDressedRows" class="retail-items retail-items-horizontal"></div>
+                <div class="retail-form-grid retail-notes-grid">
+                  <input type="number" id="dressedPaidAmount" placeholder="Paid amount" min="0" step="0.01">
+                  <textarea id="dressedNotes" placeholder="Notes for dressed bill"></textarea>
+                </div>
                 <div class="retail-item-actions">
                   <button type="button" onclick="addDressedRetailRow()">Add Dressed Item</button>
+                </div>
+                <div class="report-actions retail-actions">
+                  <button type="button" onclick="saveRetailBill()">Save Bill</button>
+                  <button type="button" onclick="sendCurrentRetailBill()">Send on WhatsApp</button>
+                  <button type="button" onclick="printCurrentRetailBill()">Print Bill</button>
                 </div>
               </div>
 
@@ -525,17 +569,6 @@ function loadPage(page) {
               </div>
 
               <datalist id="retailItemSuggestions"></datalist>
-
-              <div class="retail-form-grid retail-notes-grid">
-                <input type="number" id="retailPaidAmount" placeholder="Paid amount" min="0" step="0.01">
-                <textarea id="retailNotes" placeholder="Notes for bill or customer"></textarea>
-              </div>
-
-              <div class="report-actions retail-actions">
-                <button type="button" onclick="saveRetailBill()">Save Bill</button>
-                <button type="button" onclick="sendCurrentRetailBill()">Send on WhatsApp</button>
-                <button type="button" onclick="printCurrentRetailBill()">Print Bill</button>
-              </div>
             </div>
 
             <div class="section retail-preview-panel">

@@ -3050,10 +3050,12 @@ def next_retail_bill_number(date: str, db: Session = Depends(get_db)):
         return {"error": "Invalid date format"}
 
     bill_numbers = db.query(models.RetailBill.bill_number).all()
+    receipt_numbers = db.query(models.PaymentReceipt.receipt_number).all()
 
     max_number = 0
-    for row in bill_numbers:
-        digits = "".join(char for char in str(row.bill_number or "") if char.isdigit())
+    for row in list(bill_numbers) + list(receipt_numbers):
+        raw_value = getattr(row, "bill_number", None) or getattr(row, "receipt_number", None)
+        digits = "".join(char for char in str(raw_value or "") if char.isdigit())
         if digits:
             max_number = max(max_number, int(digits))
 
@@ -3099,10 +3101,12 @@ def next_payment_receipt_number(date: str, db: Session = Depends(get_db)):
         return {"error": "Invalid date format"}
 
     receipt_numbers = db.query(models.PaymentReceipt.receipt_number).all()
+    bill_numbers = db.query(models.RetailBill.bill_number).all()
 
     max_number = 0
-    for row in receipt_numbers:
-        digits = "".join(char for char in str(row.receipt_number or "") if char.isdigit())
+    for row in list(receipt_numbers) + list(bill_numbers):
+        raw_value = getattr(row, "receipt_number", None) or getattr(row, "bill_number", None)
+        digits = "".join(char for char in str(raw_value or "") if char.isdigit())
         if digits:
             max_number = max(max_number, int(digits))
 
@@ -3276,7 +3280,10 @@ def create_payment_receipt(payload: dict = Body(...), db: Session = Depends(get_
     existing = db.query(models.PaymentReceipt).filter(
         models.PaymentReceipt.receipt_number == receipt_number
     ).first()
-    if existing:
+    existing_bill = db.query(models.RetailBill).filter(
+        models.RetailBill.bill_number == receipt_number
+    ).first()
+    if existing or existing_bill:
         return {"error": "Receipt number already exists"}
 
     party_phone = str(payload.get("party_phone") or "").strip()
@@ -3358,11 +3365,13 @@ def create_retail_bill(payload: dict = Body(...), db: Session = Depends(get_db))
         bill_number = next_number.get("bill_number", "1")
 
     existing = db.query(models.RetailBill).filter(
-        models.RetailBill.date == target_date,
         models.RetailBill.bill_number == bill_number
     ).first()
-    if existing:
-        return {"error": "Bill number already exists for this date"}
+    existing_receipt = db.query(models.PaymentReceipt).filter(
+        models.PaymentReceipt.receipt_number == bill_number
+    ).first()
+    if existing or existing_receipt:
+        return {"error": "Bill number already exists"}
 
     customer_name = str(payload.get("customer_name") or "").strip()
     customer_phone = str(payload.get("customer_phone") or "").strip()
