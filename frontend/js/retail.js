@@ -1834,14 +1834,15 @@ function getRetailReceiptMarkup(bill) {
       const lineType = (item.line_type || "STANDARD").toUpperCase();
       const quantityText = lineType === "DRESSED" ? "" : formatBillNag(item.nag || item.quantity || 0);
       const kgsText = Number(item.weight || 0).toFixed(3);
-      const mrpText = lineType === "DRESSED" ? "0.00" : formatBillRate(item.rate);
+      const mrpText = lineType === "DRESSED" ? "" : formatBillRate(item.rate);
+      const rateText = lineType === "DRESSED" ? "" : formatBillRate(item.rate);
       return `
         <tr>
           <td>${startIndex + index + 1}</td>
           <td>${escapeHtml(item.item_name)}</td>
           <td>${escapeHtml(quantityText)}</td>
           <td>${mrpText}</td>
-          <td>${formatBillRate(item.rate)}</td>
+          <td>${rateText}</td>
           <td>${formatBillMoney(item.amount)}</td>
         </tr>
         <tr class="thermal-subrow">
