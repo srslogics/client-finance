@@ -38,6 +38,10 @@ async function loadDailySheet() {
         content.appendChild(createSheetSection(section.title, section));
       });
 
+      if (data.special_sections?.dressed_cutting_summary && Number(data.special_sections.dressed_cutting_summary.live_weight_cut || 0) > 0) {
+        content.appendChild(createDressedCuttingSummarySection(data.special_sections.dressed_cutting_summary));
+      }
+
       if (data.retail_credit_sheet?.rows?.length) {
         content.appendChild(createRetailCreditSection("Retail Credit Customers", data.retail_credit_sheet.rows, data.retail_credit_sheet.total));
       }
@@ -147,6 +151,52 @@ function createFinalSummarySection(summary) {
     <p>${formatMoneyCompact(summary.gross_profit?.total)}</p>
   `;
   wrapper.appendChild(profitCard);
+
+  return wrapper;
+}
+
+function createDressedCuttingSummarySection(summary) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "daily-sheet-section";
+
+  const heading = document.createElement("h3");
+  heading.innerText = "Dressed Cutting Summary";
+  wrapper.appendChild(heading);
+
+  const tableWrap = document.createElement("div");
+  tableWrap.className = "table-card daily-sheet-table";
+
+  const table = document.createElement("table");
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>Live Weight Cut</th>
+        <th>Dressed Weight Prepared</th>
+        <th>Dressed Weight Sold</th>
+        <th>Dressed Sales</th>
+        <th>Avg on Live Kg</th>
+        <th>Yield %</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="sheet-total-row">
+        <td>${formatNumber(summary.live_weight_cut)} kg</td>
+        <td>${formatNumber(summary.dressed_weight_prepared)} kg</td>
+        <td>${formatNumber(summary.dressed_weight_sold)} kg</td>
+        <td>${formatMoneyCompact(summary.dressed_sales_amount)}</td>
+        <td>${formatMoneyCompact(summary.avg_amount_per_live_kg)}</td>
+        <td>${formatNumber(summary.yield_percent)}%</td>
+      </tr>
+    </tbody>
+  `;
+
+  tableWrap.appendChild(table);
+  wrapper.appendChild(tableWrap);
+
+  const note = document.createElement("div");
+  note.className = "notice info";
+  note.innerHTML = "<strong>Dressed Avg</strong> = total dressed sales amount for the day / total live kg cut for the day.";
+  wrapper.appendChild(note);
 
   return wrapper;
 }

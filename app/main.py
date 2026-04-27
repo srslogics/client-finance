@@ -4030,6 +4030,18 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
     total_sales_rate_value = decimal_ratio(total_sales_amount, total_sales_weight)
     dressed_sales_weight = sum(Decimal(str(row["total"]["weight"])) for row in ordered_sales_sections if row["title"].upper() == "RETAIL DRESSED")
     dressed_sales_amount = sum(Decimal(str(row["total"]["total"])) for row in ordered_sales_sections if row["title"].upper() == "RETAIL DRESSED")
+    dressed_live_cut_weight = Decimal(
+        db.query(func.coalesce(func.sum(models.DressedStockEntry.live_weight), 0))
+        .filter(models.DressedStockEntry.date == target_date)
+        .scalar() or 0
+    )
+    dressed_yield_weight = Decimal(
+        db.query(func.coalesce(func.sum(models.DressedStockEntry.dressed_weight), 0))
+        .filter(models.DressedStockEntry.date == target_date)
+        .scalar() or 0
+    )
+    dressed_avg_on_live_weight = decimal_ratio(dressed_sales_amount, dressed_live_cut_weight)
+    dressed_yield_percent = (dressed_yield_weight / dressed_live_cut_weight * Decimal("100")) if dressed_live_cut_weight > 0 else Decimal("0")
     sell_through = (total_sales_weight / (opening_total_weight + purchase_total_weight) * Decimal("100")) if (opening_total_weight + purchase_total_weight) > 0 else Decimal("0")
     leakage_percent = (short_weight / closing_weight * Decimal("100")) if closing_weight > 0 else Decimal("0")
     realized_spread = total_sales_rate_value - total_purchase_rate_value
@@ -4159,6 +4171,12 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
                 "subvalue": f"Rs {float(dressed_sales_amount):,.2f}" if dressed_sales_amount > 0 else None
             },
             {
+                "label": "Dressed Avg",
+                "value": float(dressed_avg_on_live_weight),
+                "suffix": "/live kg",
+                "subvalue": f"Live cut {float(dressed_live_cut_weight):.3f} kg" if dressed_live_cut_weight > 0 else None
+            },
+            {
                 "label": "Stock Cover",
                 "value": float(stock_coverage_days),
                 "suffix": " days"
@@ -4171,7 +4189,15 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
             }
         ],
         "special_sections": {
-            "dressed_retail": next((section for section in ordered_sales_sections if section["title"].upper() == "RETAIL DRESSED"), None)
+            "dressed_retail": next((section for section in ordered_sales_sections if section["title"].upper() == "RETAIL DRESSED"), None),
+            "dressed_cutting_summary": {
+                "live_weight_cut": float(dressed_live_cut_weight),
+                "dressed_weight_prepared": float(dressed_yield_weight),
+                "dressed_weight_sold": float(dressed_sales_weight),
+                "dressed_sales_amount": float(dressed_sales_amount),
+                "avg_amount_per_live_kg": float(dressed_avg_on_live_weight),
+                "yield_percent": float(dressed_yield_percent)
+            }
         }
     }
 

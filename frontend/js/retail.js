@@ -1275,7 +1275,7 @@ function getRetailBillShareText(bill) {
     const weight = Number(item.weight || 0).toFixed(3);
     const amount = formatBillMoney(item.amount);
     if (lineType === "DRESSED") {
-      lines.push(`${index + 1}. ${item.item_name} (Dressed) | KGS ${weight} | Rs ${amount}`);
+      lines.push(`${index + 1}. ${item.item_name} (Dressed) | KGS ${weight} | Rate/KG ${formatBillRate(item.rate)} | Rs ${amount}`);
     } else {
       const nag = formatBillNag(item.nag || item.quantity || 0);
       lines.push(`${index + 1}. ${item.item_name} | NAG ${nag} | KGS ${weight} | Rs ${amount}`);
@@ -1835,7 +1835,7 @@ function getRetailReceiptMarkup(bill) {
       const quantityText = lineType === "DRESSED" ? "" : formatBillNag(item.nag || item.quantity || 0);
       const kgsText = Number(item.weight || 0).toFixed(3);
       const mrpText = lineType === "DRESSED" ? "" : formatBillRate(item.rate);
-      const rateText = lineType === "DRESSED" ? "" : formatBillRate(item.rate);
+      const rateText = formatBillRate(item.rate);
       return `
         <tr>
           <td>${startIndex + index + 1}</td>
