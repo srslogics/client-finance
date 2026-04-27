@@ -159,7 +159,7 @@ function setRetailBillingMode(mode) {
   if (retailBillingMode === "payment") {
     ensurePaymentReceiptModeReady();
     schedulePaymentReceiptPreviewRender();
-  } else if (currentRetailBill && !retailDraftDirty) {
+  } else if (currentRetailBill && !retailDraftDirty && getRetailBillMode(currentRetailBill) === retailBillingMode) {
     renderRetailPreview(currentRetailBill);
   } else {
     if (retailBillingMode === "dressed") {
@@ -167,6 +167,15 @@ function setRetailBillingMode(mode) {
     }
     scheduleRetailPreviewRender();
   }
+}
+
+function getRetailBillMode(bill) {
+  const hasDressed = (bill?.items || []).some(item => (item.line_type || "STANDARD").toUpperCase() === "DRESSED");
+  return hasDressed ? "dressed" : "regular";
+}
+
+function isCurrentRetailBillForActiveMode() {
+  return !!currentRetailBill && getRetailBillMode(currentRetailBill) === retailBillingMode;
 }
 
 async function ensurePaymentReceiptModeReady() {
@@ -536,8 +545,12 @@ function applyRetailDefaults(row) {
   }
 }
 
-function collectRetailItemsFromForm() {
-  return Array.from(document.querySelectorAll("#retailRegularRows .retail-item-row, #retailDressedRows .retail-item-row"))
+function collectRetailItemsFromForm(mode = retailBillingMode) {
+  const selector = mode === "dressed"
+    ? "#retailDressedRows .retail-item-row"
+    : "#retailRegularRows .retail-item-row";
+
+  return Array.from(document.querySelectorAll(selector))
     .map(row => {
       const lineType = getRetailRowLineType(row);
       const quantity = lineType === "DRESSED" ? 0 : Number(row.querySelector(".retailQty")?.value || 0);
@@ -555,8 +568,8 @@ function collectRetailItemsFromForm() {
     .filter(item => item.item_name && (item.line_type === "DRESSED" ? item.weight > 0 : item.quantity > 0));
 }
 
-function buildRetailBillFromForm() {
-  const items = collectRetailItemsFromForm();
+function buildRetailBillFromForm(mode = retailBillingMode) {
+  const items = collectRetailItemsFromForm(mode);
   const totalAmount = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const totalNag = items.reduce((sum, item) => sum + Number(item.nag || item.quantity || 0), 0);
   const totalWeight = items.reduce((sum, item) => sum + Number(item.weight || (item.unit === "KGS" ? item.nag || item.quantity : 0) || 0), 0);
@@ -581,6 +594,7 @@ function buildRetailBillFromForm() {
     date: document.getElementById("retailDate")?.value || formatDateInput(new Date()),
     time: new Date().toLocaleTimeString("en-GB"),
     cashier_name: document.getElementById("retailCashier")?.value.trim() || "admin",
+    bill_mode: mode,
     customer_name: document.getElementById("retailCustomerName")?.value.trim() || "",
     customer_phone: document.getElementById("retailCustomerPhone")?.value.trim() || "",
     customer_address: document.getElementById("retailCustomerAddress")?.value.trim() || "",
@@ -599,7 +613,7 @@ function buildRetailBillFromForm() {
 }
 
 function renderRetailPreviewFromForm() {
-  renderRetailPreview(buildRetailBillFromForm(), true);
+  renderRetailPreview(buildRetailBillFromForm(retailBillingMode), true);
 }
 
 function buildPaymentReceiptFromForm() {
@@ -695,6 +709,7 @@ function populateRetailFormFromBill(bill) {
   const regularRows = document.getElementById("retailRegularRows");
   const dressedRows = document.getElementById("retailDressedRows");
   if (!regularRows || !dressedRows || !bill) return;
+  const billMode = getRetailBillMode(bill);
 
   document.getElementById("retailDate").value = bill.date || formatDateInput(new Date());
   document.getElementById("retailBillNumber").value = bill.bill_number || "";
@@ -718,18 +733,26 @@ function populateRetailFormFromBill(bill) {
 
   regularRows.innerHTML = "";
   dressedRows.innerHTML = "";
-  (bill.items || []).forEach(item => addRetailItemRow(item, (item.line_type || "STANDARD").toUpperCase()));
+  (bill.items || []).forEach(item => {
+    if (billMode === "dressed" && (item.line_type || "STANDARD").toUpperCase() === "DRESSED") {
+      addRetailItemRow(item, "DRESSED");
+    }
+    if (billMode === "regular" && (item.line_type || "STANDARD").toUpperCase() !== "DRESSED") {
+      addRetailItemRow(item, "STANDARD");
+    }
+  });
 
-  if (!(bill.items || []).some(item => (item.line_type || "STANDARD").toUpperCase() === "STANDARD")) {
+  if (billMode === "regular" && !(bill.items || []).some(item => (item.line_type || "STANDARD").toUpperCase() === "STANDARD")) {
     addRegularRetailRow();
   }
-  if (!(bill.items || []).some(item => (item.line_type || "STANDARD").toUpperCase() === "DRESSED")) {
+  if (billMode === "dressed" && !(bill.items || []).some(item => (item.line_type || "STANDARD").toUpperCase() === "DRESSED")) {
     addDressedRetailRow();
   }
 
   currentRetailBill = bill;
   retailDraftDirty = false;
   retailBillCompleted = true;
+  setRetailBillingMode(billMode);
   renderRetailPreview(currentRetailBill);
 }
 
@@ -758,7 +781,7 @@ function renderPaymentReceiptPreview(receipt, isDraft = false) {
 }
 
 async function saveRetailBill() {
-  const draft = buildRetailBillFromForm();
+  const draft = buildRetailBillFromForm(retailBillingMode);
 
   if (!draft.date) {
     showToast("Select bill date");
@@ -766,7 +789,7 @@ async function saveRetailBill() {
   }
 
   if (!draft.items.length) {
-    showToast("Add at least one item");
+    showToast(retailBillingMode === "dressed" ? "Add at least one dressed item" : "Add at least one regular item");
     return;
   }
 
@@ -1108,9 +1131,8 @@ async function openRetailBill(billId) {
 
 async function printCurrentRetailBill() {
   let bill = currentRetailBill;
-  const draft = buildRetailBillFromForm();
 
-  if (!bill || retailDraftDirty) {
+  if (!bill || retailDraftDirty || !isCurrentRetailBillForActiveMode()) {
     bill = await saveRetailBill();
   }
 
@@ -1218,7 +1240,7 @@ function getRetailBillShareText(bill) {
 async function sendCurrentRetailBill() {
   let bill = currentRetailBill;
 
-  if (!bill || retailDraftDirty) {
+  if (!bill || retailDraftDirty || !isCurrentRetailBillForActiveMode()) {
     bill = await saveRetailBill();
   }
 
@@ -1440,7 +1462,7 @@ function resetPaymentReceiptForm() {
 }
 
 function resetRetailForm() {
-  const draftHasItems = collectRetailItemsFromForm().length > 0;
+  const draftHasItems = collectRetailItemsFromForm(retailBillingMode).length > 0;
   if (draftHasItems && !retailBillCompleted) {
     showToast("Save or print this bill before starting a new one");
     return;
@@ -1461,7 +1483,11 @@ function resetRetailForm() {
   document.getElementById("retailCashier").value = "admin";
   syncRetailSettlementUi();
 
-  addRegularRetailRow();
+  if (retailBillingMode === "dressed") {
+    addDressedRetailRow();
+  } else {
+    addRegularRetailRow();
+  }
   currentRetailBill = null;
   retailDraftDirty = false;
   retailBillCompleted = false;
