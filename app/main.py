@@ -3222,16 +3222,16 @@ def create_dressed_stock_entries(payload: dict = Body(...), input_date: str = No
 
     for index, row in enumerate(rows, start=1):
         try:
-            item_name = str(row.get("item_name") or row.get("hen_type") or "").strip()
+            item_name = str(row.get("item_name") or row.get("hen_type") or "").strip() or "Dressed Chicken"
             live_quantity = parse_decimal(row.get("live_quantity", row.get("nag")))
             live_weight = parse_decimal(row.get("live_weight"))
             dressed_weight = parse_decimal(row.get("dressed_weight"))
             default_rate = parse_decimal(row.get("default_rate"))
             notes = str(row.get("notes") or "").strip() or None
 
-            if not item_name or live_quantity < 0 or live_weight < 0 or dressed_weight <= 0 or default_rate < 0:
+            if live_quantity < 0 or live_weight < 0 or dressed_weight <= 0 or default_rate < 0:
                 skipped += 1
-                row_error(errors, index, "Enter item, valid live NAG, live weight, dressed weight, and rate")
+                row_error(errors, index, "Enter valid live NAG, live weight, and dressed weight")
                 continue
 
             db.add(models.DressedStockEntry(

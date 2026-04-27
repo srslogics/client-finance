@@ -1077,11 +1077,10 @@ function addDressedStockRow(entry = null) {
   const row = document.createElement("div");
   row.className = "retail-item-row dressed-stock-row";
   row.innerHTML = `
-    <input type="text" class="dressedStockItem" placeholder="Item name" list="retailItemSuggestions" autocomplete="off" oninput="suggestRetailItems(this)">
+    <input type="text" class="dressedStockItem" placeholder="Item name (optional)" list="retailItemSuggestions" autocomplete="off" oninput="suggestRetailItems(this)">
     <input type="number" class="dressedLiveNag" placeholder="Live NAG" min="0" step="1">
     <input type="number" class="dressedLiveWeight" placeholder="Live weight (kg)" min="0" step="0.001">
     <input type="number" class="dressedYieldWeight" placeholder="Dressed weight (kg)" min="0" step="0.001">
-    <input type="number" class="dressedDefaultRate" placeholder="Default rate" min="0" step="0.01">
     <button type="button" onclick="removeRetailItemRow(this)">Remove</button>
   `;
   container.appendChild(row);
@@ -1091,7 +1090,6 @@ function addDressedStockRow(entry = null) {
     row.querySelector(".dressedLiveNag").value = entry.live_quantity || "";
     row.querySelector(".dressedLiveWeight").value = entry.live_weight || "";
     row.querySelector(".dressedYieldWeight").value = entry.dressed_weight || "";
-    row.querySelector(".dressedDefaultRate").value = entry.default_rate || "";
   }
 }
 
@@ -1101,10 +1099,9 @@ async function saveDressedStock() {
       item_name: row.querySelector(".dressedStockItem")?.value.trim(),
       live_quantity: row.querySelector(".dressedLiveNag")?.value,
       live_weight: row.querySelector(".dressedLiveWeight")?.value,
-      dressed_weight: row.querySelector(".dressedYieldWeight")?.value,
-      default_rate: row.querySelector(".dressedDefaultRate")?.value
+      dressed_weight: row.querySelector(".dressedYieldWeight")?.value
     }))
-    .filter(row => row.item_name || row.dressed_weight);
+    .filter(row => row.live_weight || row.dressed_weight);
 
   const date = document.getElementById("retailDate")?.value;
   if (!date) {
@@ -1153,7 +1150,6 @@ async function loadDressedStock() {
         <span>Live NAG: ${formatBillNag(item.live_quantity || 0)}</span>
         <span>Live weight: ${Number(item.live_weight || 0).toFixed(3)} kg</span>
         <span>Available dressed: ${Number(item.available_dressed_weight || 0).toFixed(3)} kg</span>
-        <span>Default rate: Rs ${Number(item.default_rate || 0).toFixed(2)}</span>
       </div>
     `).join("");
   } catch (e) {
