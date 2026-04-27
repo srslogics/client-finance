@@ -440,7 +440,7 @@ function loadPage(page) {
 
                   <div class="retail-shortcuts-head">
                     <span>Dressed Billing</span>
-                    <p>Bill dressed chicken separately. Amount and rate stay tied to dressed kg.</p>
+                    <p>Bill dressed chicken separately with item name, kgs, rate, and amount.</p>
                   </div>
                   <div id="retailDressedRows" class="retail-items retail-items-horizontal"></div>
                 </div>

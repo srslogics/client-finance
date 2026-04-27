@@ -2024,9 +2024,9 @@ function syncRetailLineUi(row) {
     unitInput.disabled = true;
     qtyInput.value = "";
     qtyInput.placeholder = "Not on bill";
-    weightInput.placeholder = "Dressed weight (kg)";
+    weightInput.placeholder = "KGS";
     amountInput.placeholder = "Amount";
-    rateInput.placeholder = "Auto rate / kg";
+    rateInput.placeholder = "Rate";
     rateInput.readOnly = true;
   } else {
     unitInput.disabled = false;
