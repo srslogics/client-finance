@@ -178,6 +178,9 @@ function setRetailBillingMode(mode) {
   const setupSection = document.querySelector(".retail-setup-panel");
   const retailHistorySection = document.getElementById("retailBillHistorySection");
   const paymentHistorySection = document.getElementById("paymentReceiptHistorySection");
+  const modeTitle = document.getElementById("retailModeTitle");
+  const previewTitle = document.getElementById("retailPreviewTitle");
+  const historyTitle = document.getElementById("retailHistoryTitle");
 
   if (regularButton) regularButton.classList.toggle("active", retailBillingMode === "regular");
   if (dressedButton) dressedButton.classList.toggle("active", retailBillingMode === "dressed");
@@ -186,9 +189,12 @@ function setRetailBillingMode(mode) {
   if (dressedSection) dressedSection.style.display = retailBillingMode === "dressed" ? "" : "none";
   if (paymentSection) paymentSection.style.display = retailBillingMode === "payment" ? "" : "none";
   if (retailSalesHeader) retailSalesHeader.style.display = retailBillingMode === "payment" ? "none" : "";
-  if (setupSection) setupSection.style.display = retailBillingMode === "payment" ? "none" : "";
+  if (setupSection) setupSection.style.display = retailBillingMode === "dressed" ? "" : "none";
   if (retailHistorySection) retailHistorySection.style.display = retailBillingMode === "payment" ? "none" : "";
   if (paymentHistorySection) paymentHistorySection.style.display = retailBillingMode === "payment" ? "" : "none";
+  if (modeTitle) modeTitle.innerText = retailBillingMode === "dressed" ? "Dressed Billing" : retailBillingMode === "payment" ? "Payment Receipt" : "Regular Billing";
+  if (previewTitle) previewTitle.innerText = retailBillingMode === "dressed" ? "Dressed Bill Preview" : retailBillingMode === "payment" ? "Payment Receipt Preview" : "Regular Bill Preview";
+  if (historyTitle) historyTitle.innerText = retailBillingMode === "dressed" ? "Recent Dressed Bills" : "Recent Regular Bills";
 
   if (retailBillingMode === "payment") {
     ensurePaymentReceiptModeReady();
@@ -206,6 +212,11 @@ function setRetailBillingMode(mode) {
 function getRetailBillMode(bill) {
   const hasDressed = (bill?.items || []).some(item => (item.line_type || "STANDARD").toUpperCase() === "DRESSED");
   return hasDressed ? "dressed" : "regular";
+}
+
+function normalizeRetailBillMode(bill) {
+  if (bill?.bill_mode) return String(bill.bill_mode).toLowerCase();
+  return getRetailBillMode(bill);
 }
 
 function getActiveRetailDate() {
@@ -1023,10 +1034,11 @@ async function loadRetailBills() {
         )
       : { results: [] };
 
-    const mergedResults = mergeRetailBillResults(data.results || [], pendingBills);
+    const mergedResults = mergeRetailBillResults(data.results || [], pendingBills)
+      .filter(bill => normalizeRetailBillMode(bill) === retailBillingMode);
 
     if (!mergedResults.length) {
-      body.innerHTML = `<tr><td colspan="8" class="empty">No retail bills for this date</td></tr>`;
+      body.innerHTML = `<tr><td colspan="8" class="empty">No ${retailBillingMode === "dressed" ? "dressed" : "regular"} bills for this date</td></tr>`;
       return;
     }
 

@@ -612,10 +612,12 @@ def serialize_dressed_stock_entry(entry):
 
 def serialize_retail_bill(bill, items):
     created_at = bill.created_at or datetime.utcnow()
+    bill_mode = "dressed" if any((item.line_type or "STANDARD").upper() == "DRESSED" for item in items) else "regular"
 
     return {
         "id": str(bill.id),
         "bill_number": bill.bill_number,
+        "bill_mode": bill_mode,
         "date": str(bill.date),
         "time": created_at.strftime("%H:%M:%S"),
         "customer_name": bill.customer_name or "",
@@ -3076,12 +3078,27 @@ def list_retail_bills(date: str = None, db: Session = Depends(get_db)):
         query = query.filter(models.RetailBill.date == target_date)
 
     bills = query.limit(50).all()
+    bill_ids = [bill.id for bill in bills]
+    mode_map = {}
+    if bill_ids:
+        item_rows = db.query(
+            models.RetailBillItem.bill_id,
+            models.RetailBillItem.line_type
+        ).filter(
+            models.RetailBillItem.bill_id.in_(bill_ids)
+        ).all()
+        for row in item_rows:
+            if str(row.line_type or "STANDARD").upper() == "DRESSED":
+                mode_map[row.bill_id] = "dressed"
+            else:
+                mode_map.setdefault(row.bill_id, "regular")
 
     return {
         "results": [
             {
                 "id": str(bill.id),
                 "bill_number": bill.bill_number,
+                "bill_mode": mode_map.get(bill.id, "regular"),
                 "date": str(bill.date),
                 "customer_name": bill.customer_name or "Walk-in Customer",
                 "payment_mode": bill.payment_mode or "Cash",

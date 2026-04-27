@@ -364,7 +364,7 @@ function loadPage(page) {
               <div class="section-head">
                 <div>
                   <span>New Bill</span>
-                  <h2>Retail Invoice</h2>
+                  <h2 id="retailModeTitle">Regular Billing</h2>
                 </div>
                 <button type="button" onclick="resetRetailForm()">New Bill</button>
               </div>
@@ -575,7 +575,7 @@ function loadPage(page) {
               <div class="section-head">
                 <div>
                   <span>Print Preview</span>
-                  <h2>Thermal Receipt</h2>
+                  <h2 id="retailPreviewTitle">Regular Bill Preview</h2>
                 </div>
               </div>
               <div id="retailPreview" class="thermal-preview"></div>
@@ -586,7 +586,7 @@ function loadPage(page) {
             <div class="section-head">
               <div>
                 <span>Saved Bills</span>
-                <h2>Recent Retail Bills</h2>
+                <h2 id="retailHistoryTitle">Recent Regular Bills</h2>
               </div>
               <button type="button" onclick="loadRetailBills()">Refresh</button>
             </div>
