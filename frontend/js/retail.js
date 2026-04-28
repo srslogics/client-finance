@@ -1231,10 +1231,10 @@ async function printCurrentRetailBill() {
           .thermal-items-table th { font-weight: 700; }
           .thermal-items-table th:nth-child(1), .thermal-items-table td:nth-child(1) { width: 6%; text-align: left; }
           .thermal-items-table th:nth-child(2), .thermal-items-table td:nth-child(2) { width: 30%; text-align: left; white-space: normal; overflow-wrap: anywhere; }
-          .thermal-items-table th:nth-child(3), .thermal-items-table td:nth-child(3) { width: 12%; text-align: right; }
-          .thermal-items-table th:nth-child(4), .thermal-items-table td:nth-child(4) { width: 18%; text-align: right; }
+          .thermal-items-table th:nth-child(3), .thermal-items-table td:nth-child(3) { width: 15%; text-align: right; padding-right: 6px; }
+          .thermal-items-table th:nth-child(4), .thermal-items-table td:nth-child(4) { width: 17%; text-align: right; padding-left: 6px; padding-right: 4px; }
           .thermal-items-table th:nth-child(5), .thermal-items-table td:nth-child(5) { width: 14%; text-align: right; }
-          .thermal-items-table th:nth-child(6), .thermal-items-table td:nth-child(6) { width: 20%; text-align: right; }
+          .thermal-items-table th:nth-child(6), .thermal-items-table td:nth-child(6) { width: 18%; text-align: right; }
           .thermal-items-table.thermal-items-table-dressed th:nth-child(1), .thermal-items-table.thermal-items-table-dressed td:nth-child(1) { width: 8%; }
           .thermal-items-table.thermal-items-table-dressed th:nth-child(2), .thermal-items-table.thermal-items-table-dressed td:nth-child(2) { width: 38%; text-align: left; white-space: normal; overflow-wrap: anywhere; }
           .thermal-items-table.thermal-items-table-dressed th:nth-child(3), .thermal-items-table.thermal-items-table-dressed td:nth-child(3) { width: 18%; text-align: right; }
@@ -1733,10 +1733,10 @@ function getThermalReceiptShareStyles() {
     .thermal-items-table th:nth-child(4), .thermal-items-table td:nth-child(4),
     .thermal-items-table th:nth-child(5), .thermal-items-table td:nth-child(5),
     .thermal-items-table th:nth-child(6), .thermal-items-table td:nth-child(6) { text-align: right; }
-    .thermal-items-table th:nth-child(3), .thermal-items-table td:nth-child(3) { width: 12%; }
-    .thermal-items-table th:nth-child(4), .thermal-items-table td:nth-child(4) { width: 18%; }
+    .thermal-items-table th:nth-child(3), .thermal-items-table td:nth-child(3) { width: 15%; padding-right: 6px; }
+    .thermal-items-table th:nth-child(4), .thermal-items-table td:nth-child(4) { width: 17%; padding-left: 6px; padding-right: 4px; }
     .thermal-items-table th:nth-child(5), .thermal-items-table td:nth-child(5) { width: 14%; }
-    .thermal-items-table th:nth-child(6), .thermal-items-table td:nth-child(6) { width: 20%; }
+    .thermal-items-table th:nth-child(6), .thermal-items-table td:nth-child(6) { width: 18%; }
     .thermal-items-table.thermal-items-table-dressed th:nth-child(1), .thermal-items-table.thermal-items-table-dressed td:nth-child(1) { width: 8%; }
     .thermal-items-table.thermal-items-table-dressed th:nth-child(2), .thermal-items-table.thermal-items-table-dressed td:nth-child(2) { width: 38%; text-align: left; white-space: normal; overflow-wrap: anywhere; }
     .thermal-items-table.thermal-items-table-dressed th:nth-child(3), .thermal-items-table.thermal-items-table-dressed td:nth-child(3) { width: 18%; text-align: right; }
@@ -2017,15 +2017,15 @@ function syncRetailLineUi(row) {
     unitInput.value = "KGS";
     unitInput.disabled = true;
     qtyInput.value = "";
-    qtyInput.placeholder = "Not on bill";
+    qtyInput.placeholder = "";
     weightInput.placeholder = "KGS";
     amountInput.placeholder = "Amount";
     rateInput.placeholder = "Rate";
-    rateInput.readOnly = true;
+    rateInput.readOnly = false;
   } else {
     unitInput.disabled = false;
     qtyInput.placeholder = "NAG";
-    weightInput.placeholder = "Weight (kg)";
+    weightInput.placeholder = "KGS";
     amountInput.placeholder = "Amount";
     rateInput.placeholder = "Rate";
     rateInput.readOnly = false;

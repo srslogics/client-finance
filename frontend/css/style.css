@@ -1095,12 +1095,12 @@ input[type="file"] {
 
 .thermal-items-table th:nth-child(3),
 .thermal-items-table td:nth-child(3) {
-  width: 14%;
+  width: 15%;
 }
 
 .thermal-items-table th:nth-child(4),
 .thermal-items-table td:nth-child(4) {
-  width: 12%;
+  width: 17%;
 }
 
 .thermal-items-table th:nth-child(5),
@@ -1122,6 +1122,17 @@ input[type="file"] {
 .thermal-items-table th:nth-child(6),
 .thermal-items-table td:nth-child(6) {
   text-align: right;
+}
+
+.thermal-items-table th:nth-child(3),
+.thermal-items-table td:nth-child(3) {
+  padding-right: 6px;
+}
+
+.thermal-items-table th:nth-child(4),
+.thermal-items-table td:nth-child(4) {
+  padding-left: 6px;
+  padding-right: 4px;
 }
 
 .thermal-subrow td {
