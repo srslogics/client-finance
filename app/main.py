@@ -3229,9 +3229,9 @@ def create_dressed_stock_entries(payload: dict = Body(...), input_date: str = No
             default_rate = parse_decimal(row.get("default_rate"))
             notes = str(row.get("notes") or "").strip() or None
 
-            if live_quantity < 0 or live_weight < 0 or dressed_weight <= 0 or default_rate < 0:
+            if live_quantity < 0 or live_weight < 0 or dressed_weight < 0 or default_rate < 0:
                 skipped += 1
-                row_error(errors, index, "Enter valid live NAG, live weight, and dressed weight")
+                row_error(errors, index, "Enter valid live NAG and live weight")
                 continue
 
             db.add(models.DressedStockEntry(
@@ -3239,8 +3239,8 @@ def create_dressed_stock_entries(payload: dict = Body(...), input_date: str = No
                 item_name=item_name,
                 live_quantity=live_quantity if live_quantity > 0 else None,
                 live_weight=live_weight if live_weight > 0 else None,
-                dressed_weight=dressed_weight,
-                remaining_dressed_weight=dressed_weight,
+                dressed_weight=dressed_weight if dressed_weight > 0 else None,
+                remaining_dressed_weight=dressed_weight if dressed_weight > 0 else None,
                 default_rate=default_rate if default_rate > 0 else None,
                 notes=notes
             ))
@@ -3474,6 +3474,9 @@ def create_retail_bill(payload: dict = Body(...), db: Session = Depends(get_db))
             models.DressedStockEntry.date.asc(),
             models.DressedStockEntry.created_at.asc()
         ).all()
+
+        if not batches:
+            continue
 
         for batch in batches:
             if remaining_required <= 0:
