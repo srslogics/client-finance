@@ -2117,6 +2117,34 @@ def process_day_items(input_date: str, actual_stock: list[dict], db: Session = D
                 "leakage": float(leakage)
             })
 
+        total_opening_weight = sum(Decimal(str(row["opening_stock"])) for row in results)
+        total_purchase_weight = sum(Decimal(str(row["purchase"])) for row in results)
+        total_sales_weight = sum(Decimal(str(row["sales"])) for row in results)
+        total_expected_weight = sum(Decimal(str(row["expected_stock"])) for row in results)
+        total_actual_weight = sum(Decimal(str(row["actual_stock"])) for row in results)
+        total_leakage_weight = sum(Decimal(str(row["leakage"])) for row in results)
+
+        daily_stock = db.query(models.DailyStock).filter(
+            models.DailyStock.date == target_date
+        ).first()
+        if daily_stock:
+            daily_stock.opening_weight = total_opening_weight
+            daily_stock.purchase_weight = total_purchase_weight
+            daily_stock.sales_weight = total_sales_weight
+            daily_stock.expected_closing_weight = total_expected_weight
+            daily_stock.actual_closing_weight = total_actual_weight
+            daily_stock.leakage = total_leakage_weight
+        else:
+            db.add(models.DailyStock(
+                date=target_date,
+                opening_weight=total_opening_weight,
+                purchase_weight=total_purchase_weight,
+                sales_weight=total_sales_weight,
+                expected_closing_weight=total_expected_weight,
+                actual_closing_weight=total_actual_weight,
+                leakage=total_leakage_weight
+            ))
+
         db.commit()
 
     except Exception as e:
@@ -2720,6 +2748,8 @@ def get_dashboard(date: str, db: Session = Depends(get_db)):
             ).label("purchase"),
             func.sum(receivable_case()).label("receivable"),
             func.sum(payable_case()).label("payable")
+        ).filter(
+            models.Transaction.date <= target_date
         ).first()
 
         daily_totals = db.query(
@@ -3459,24 +3489,23 @@ def create_retail_bill(payload: dict = Body(...), db: Session = Depends(get_db))
         total_weight += weight
         total_amount += amount
 
-    dressed_consumption = {}
-    for item in normalized_items:
-        if item["line_type"] == "DRESSED":
-            dressed_consumption[item["item_name"]] = dressed_consumption.get(item["item_name"], Decimal("0")) + Decimal(item["weight"] or 0)
+    total_dressed_required = sum(
+        Decimal(item["weight"] or 0)
+        for item in normalized_items
+        if item["line_type"] == "DRESSED"
+    )
 
-    dressed_batches_to_update = []
-    for item_name, required_weight in dressed_consumption.items():
-        remaining_required = Decimal(required_weight or 0)
+    if total_dressed_required > 0:
+        remaining_required = Decimal(total_dressed_required)
         batches = db.query(models.DressedStockEntry).filter(
-            models.DressedStockEntry.item_name == item_name,
+            models.DressedStockEntry.date == target_date,
             models.DressedStockEntry.remaining_dressed_weight > 0
         ).order_by(
-            models.DressedStockEntry.date.asc(),
             models.DressedStockEntry.created_at.asc()
         ).all()
 
         if not batches:
-            continue
+            return {"error": "No dressed stock is available for this date"}
 
         for batch in batches:
             if remaining_required <= 0:
@@ -3484,12 +3513,11 @@ def create_retail_bill(payload: dict = Body(...), db: Session = Depends(get_db))
             available_weight = Decimal(batch.remaining_dressed_weight or 0)
             used_weight = min(available_weight, remaining_required)
             batch.remaining_dressed_weight = available_weight - used_weight
-            dressed_batches_to_update.append(batch)
             remaining_required -= used_weight
 
         if remaining_required > 0:
             db.rollback()
-            return {"error": f"Not enough dressed stock for {item_name}. Short by {float(remaining_required):.3f} kg"}
+            return {"error": f"Not enough dressed stock for this date. Short by {float(remaining_required):.3f} kg"}
 
     if raw_paid_amount in [None, ""] and payment_mode.strip().upper() != "CREDIT":
         paid_amount = total_amount
