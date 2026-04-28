@@ -237,7 +237,7 @@ function removeManualEntryRow(button) {
 function addDealerEntryRow() {
   createManualRow("dealerEntryRows", `
     <input type="text" class="dealerParty" placeholder="Dealer name" list="manualPartySuggestions" autocomplete="off" oninput="suggestManualParties(this)">
-    <input type="text" class="dealerCategory" placeholder="Category">
+    <input type="text" class="dealerCategory" placeholder="Category (optional)">
     <input type="text" class="dealerItem" placeholder="Hen type" list="itemSuggestions" autocomplete="off" oninput="suggestItems(this)">
     <input type="number" class="dealerNag" placeholder="NAG" min="0" step="1">
     <input type="number" class="dealerWeight" placeholder="Kgs" min="0" step="0.01">

@@ -902,19 +902,19 @@ def create_dealer_entries(payload: dict = Body(...), input_date: str = None, db:
     for index, row in enumerate(rows, start=1):
         try:
             party_name = str(row.get("dealer") or row.get("party") or "").strip()
-            category = str(row.get("category") or "").strip()
+            category = str(row.get("category") or "").strip() or None
             item_type = str(row.get("hen_type") or row.get("item_type") or "").strip()
             quantity = parse_decimal(row.get("nag", row.get("quantity")))
             weight = parse_decimal(row.get("kgs", row.get("weight")))
             rate = parse_decimal(row.get("rate_per_kg", row.get("rate")))
 
-            if not party_name or not category or not item_type or weight <= 0 or rate <= 0 or quantity < 0:
+            if not party_name or not item_type or weight <= 0 or rate <= 0 or quantity < 0:
                 skipped += 1
-                row_error(errors, index, "Enter dealer, category, hen type, valid NAG, kg, and rate")
+                row_error(errors, index, "Enter dealer, hen type, valid NAG, kg, and rate")
                 continue
 
             party_id = get_or_create_party(db, party_name, "DEALER", seen_aliases)
-            txn_key = (target_date, party_id, float(weight), float(rate), "PURCHASE", category, item_type)
+            txn_key = (target_date, party_id, float(weight), float(rate), "PURCHASE", category or "", item_type)
             existing_txn = db.query(models.Transaction).filter_by(
                 date=target_date,
                 party_id=party_id,
