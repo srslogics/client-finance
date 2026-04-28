@@ -4,6 +4,8 @@ function loadPage(page) {
     currentPage = page;
     const content = document.getElementById("content");
     const title = document.getElementById("pageTitle");
+    const toast = document.getElementById("toast");
+    if (toast) toast.style.display = "none";
 
     if (typeof destroyDashboardCharts === "function") {
       destroyDashboardCharts();
@@ -29,7 +31,7 @@ function loadPage(page) {
             <h2>Enter, review, and process the day directly in the app</h2>
           </div>
 
-          <div class="section" id="retailBillHistorySection">
+          <div class="section">
             <div class="section-head">
               <div>
                 <span>Step 1</span>

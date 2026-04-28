@@ -43,8 +43,6 @@ async function loadAnalytics() {
   if (cachedSummary) renderAnalyticsSummary(cachedSummary);
   if (cachedTrend) renderTrendCharts(cachedTrend);
 
-  showToast(cachedTrend ? "Refreshing analytics..." : "Loading analytics...");
-
   loadAnalyticsPart(endpoints.summary, null, renderAnalyticsSummary, requestToken);
   loadAnalyticsPart(endpoints.trend, [], renderTrendCharts, requestToken);
   loadAnalyticsPart(endpoints.leakage, [], renderLeakageChart, requestToken);
