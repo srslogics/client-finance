@@ -3504,9 +3504,6 @@ def create_retail_bill(payload: dict = Body(...), db: Session = Depends(get_db))
             models.DressedStockEntry.created_at.asc()
         ).all()
 
-        if not batches:
-            return {"error": "No dressed stock is available for this date"}
-
         for batch in batches:
             if remaining_required <= 0:
                 break
@@ -3514,10 +3511,6 @@ def create_retail_bill(payload: dict = Body(...), db: Session = Depends(get_db))
             used_weight = min(available_weight, remaining_required)
             batch.remaining_dressed_weight = available_weight - used_weight
             remaining_required -= used_weight
-
-        if remaining_required > 0:
-            db.rollback()
-            return {"error": f"Not enough dressed stock for this date. Short by {float(remaining_required):.3f} kg"}
 
     if raw_paid_amount in [None, ""] and payment_mode.strip().upper() != "CREDIT":
         paid_amount = total_amount
