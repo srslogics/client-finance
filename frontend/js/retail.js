@@ -1218,10 +1218,10 @@ async function printCurrentRetailBill() {
           .thermal-items-table th { font-weight: 700; }
           .thermal-items-table th:nth-child(1), .thermal-items-table td:nth-child(1) { width: 6%; text-align: left; }
           .thermal-items-table th:nth-child(2), .thermal-items-table td:nth-child(2) { width: 30%; text-align: left; white-space: normal; overflow-wrap: anywhere; }
-          .thermal-items-table th:nth-child(3), .thermal-items-table td:nth-child(3) { width: 14%; text-align: right; }
-          .thermal-items-table th:nth-child(4), .thermal-items-table td:nth-child(4) { width: 12%; text-align: right; }
+          .thermal-items-table th:nth-child(3), .thermal-items-table td:nth-child(3) { width: 12%; text-align: right; }
+          .thermal-items-table th:nth-child(4), .thermal-items-table td:nth-child(4) { width: 18%; text-align: right; }
           .thermal-items-table th:nth-child(5), .thermal-items-table td:nth-child(5) { width: 14%; text-align: right; }
-          .thermal-items-table th:nth-child(6), .thermal-items-table td:nth-child(6) { width: 24%; text-align: right; }
+          .thermal-items-table th:nth-child(6), .thermal-items-table td:nth-child(6) { width: 20%; text-align: right; }
           .thermal-items-table.thermal-items-table-dressed th:nth-child(1), .thermal-items-table.thermal-items-table-dressed td:nth-child(1) { width: 8%; }
           .thermal-items-table.thermal-items-table-dressed th:nth-child(2), .thermal-items-table.thermal-items-table-dressed td:nth-child(2) { width: 38%; text-align: left; white-space: normal; overflow-wrap: anywhere; }
           .thermal-items-table.thermal-items-table-dressed th:nth-child(3), .thermal-items-table.thermal-items-table-dressed td:nth-child(3) { width: 18%; text-align: right; }
@@ -1270,7 +1270,7 @@ function getRetailBillShareText(bill) {
       lines.push(`${index + 1}. ${item.item_name} (Dressed) | KGS ${weight} | Rate ${formatBillRate(item.rate)} | Rs ${amount}`);
     } else {
       const nag = formatBillNag(item.nag || item.quantity || 0);
-      lines.push(`${index + 1}. ${item.item_name} | NAG ${nag} | KGS ${weight} | Rs ${amount}`);
+      lines.push(`${index + 1}. ${item.item_name} | NAG ${nag} | KGS ${weight} | Rate ${formatBillRate(item.rate)} | Rs ${amount}`);
     }
   });
 
@@ -1720,10 +1720,10 @@ function getThermalReceiptShareStyles() {
     .thermal-items-table th:nth-child(4), .thermal-items-table td:nth-child(4),
     .thermal-items-table th:nth-child(5), .thermal-items-table td:nth-child(5),
     .thermal-items-table th:nth-child(6), .thermal-items-table td:nth-child(6) { text-align: right; }
-    .thermal-items-table th:nth-child(3), .thermal-items-table td:nth-child(3) { width: 14%; }
-    .thermal-items-table th:nth-child(4), .thermal-items-table td:nth-child(4) { width: 12%; }
+    .thermal-items-table th:nth-child(3), .thermal-items-table td:nth-child(3) { width: 12%; }
+    .thermal-items-table th:nth-child(4), .thermal-items-table td:nth-child(4) { width: 18%; }
     .thermal-items-table th:nth-child(5), .thermal-items-table td:nth-child(5) { width: 14%; }
-    .thermal-items-table th:nth-child(6), .thermal-items-table td:nth-child(6) { width: 24%; }
+    .thermal-items-table th:nth-child(6), .thermal-items-table td:nth-child(6) { width: 20%; }
     .thermal-items-table.thermal-items-table-dressed th:nth-child(1), .thermal-items-table.thermal-items-table-dressed td:nth-child(1) { width: 8%; }
     .thermal-items-table.thermal-items-table-dressed th:nth-child(2), .thermal-items-table.thermal-items-table-dressed td:nth-child(2) { width: 38%; text-align: left; white-space: normal; overflow-wrap: anywhere; }
     .thermal-items-table.thermal-items-table-dressed th:nth-child(3), .thermal-items-table.thermal-items-table-dressed td:nth-child(3) { width: 18%; text-align: right; }
@@ -1833,7 +1833,6 @@ function getRetailReceiptMarkup(bill) {
       const lineType = (item.line_type || "STANDARD").toUpperCase();
       const quantityText = lineType === "DRESSED" ? "" : formatBillNag(item.nag || item.quantity || 0);
       const kgsText = Number(item.weight || 0).toFixed(3);
-      const mrpText = lineType === "DRESSED" ? "" : formatBillRate(item.rate);
       const rateText = formatBillRate(item.rate);
       if (isDressedOnlyBill) {
         return `
@@ -1851,14 +1850,9 @@ function getRetailReceiptMarkup(bill) {
           <td>${startIndex + index + 1}</td>
           <td>${escapeHtml(item.item_name)}</td>
           <td>${escapeHtml(quantityText)}</td>
-          <td>${mrpText}</td>
+          <td>${kgsText}</td>
           <td>${rateText}</td>
           <td>${formatBillMoney(item.amount)}</td>
-        </tr>
-        <tr class="thermal-subrow">
-          <td></td>
-          <td colspan="2">KGS ${kgsText}</td>
-          <td colspan="3">${lineType === "DRESSED" ? "Dressed Chicken" : item.unit || "KGS"}</td>
         </tr>
       `;
     }).join("");
@@ -1914,8 +1908,8 @@ function getRetailReceiptMarkup(bill) {
               : `
                 <th>Sl</th>
                 <th>Item Name</th>
-                <th>Qty</th>
-                <th>MRP</th>
+                <th>NAG</th>
+                <th>KGS</th>
                 <th>Rate</th>
                 <th>Amount</th>
               `}
