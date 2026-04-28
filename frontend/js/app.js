@@ -530,6 +530,31 @@ function loadPage(page) {
                       <button type="button" onclick="addDressedStockRow()">Add Dressed Stock</button>
                       <button type="button" onclick="saveDressedStock()">Save Dressed Stock</button>
                     </div>
+                    <div class="retail-saved-subsection">
+                      <div class="retail-shortcuts-head retail-saved-head">
+                        <span>Saved Dressed Stock</span>
+                        <p>Review dressed stock entries saved for the selected bill date.</p>
+                      </div>
+                      <div class="card table-card">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Date</th>
+                              <th>Item</th>
+                              <th>Live NAG</th>
+                              <th>Live Weight</th>
+                              <th>Dressed Weight</th>
+                              <th>Remaining</th>
+                            </tr>
+                          </thead>
+                          <tbody id="dressedStockSavedBody">
+                            <tr>
+                              <td colspan="6" class="empty">No dressed stock saved yet</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
                   </div>
                 </details>
               </div>

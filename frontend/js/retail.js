@@ -1160,10 +1160,36 @@ async function loadDressedStock() {
     const data = await optionalApiCall(`/dressed-stock?date=${encodeURIComponent(date)}`, { entries: [], available_items: [] }, "GET", null, { cache: false });
     dressedStockCache = data.available_items || [];
     dressedStockLoadedForDate = date;
+    renderSavedDressedStock(data.entries || []);
   } catch (e) {
     console.error(e);
     dressedStockLoadedForDate = "";
+    renderSavedDressedStock([]);
   }
+}
+
+function renderSavedDressedStock(entries) {
+  const body = document.getElementById("dressedStockSavedBody");
+  if (!body) return;
+
+  if (!entries.length) {
+    body.innerHTML = `<tr><td colspan="6" class="empty">No dressed stock saved for this date</td></tr>`;
+    return;
+  }
+
+  body.innerHTML = "";
+  entries.forEach(entry => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${formatDisplayDate(entry.date)}</td>
+      <td>${escapeHtml(entry.item_name || "Dressed Chicken")}</td>
+      <td>${formatBillNag(entry.live_quantity || 0)}</td>
+      <td>${Number(entry.live_weight || 0).toFixed(3)}</td>
+      <td>${Number(entry.dressed_weight || 0).toFixed(3)}</td>
+      <td>${Number(entry.remaining_dressed_weight || 0).toFixed(3)}</td>
+    `;
+    body.appendChild(row);
+  });
 }
 
 async function openRetailBill(billId) {

@@ -818,6 +818,14 @@ input[type="file"] {
   margin-top: 18px;
 }
 
+.retail-saved-subsection {
+  margin-top: 16px;
+}
+
+.retail-saved-head {
+  margin-bottom: 10px;
+}
+
 .retail-admin-toggle {
   border: 1px solid var(--line);
   border-radius: 14px;
