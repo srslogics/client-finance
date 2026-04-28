@@ -299,7 +299,9 @@ function fillPartySuggestions(suggestions, parties) {
   parties.forEach(party => {
     const option = document.createElement("option");
     option.value = party.name;
-    option.label = party.phone ? `${party.name} - ${party.phone}` : party.name;
+    const text = party.phone ? `${party.name} - ${party.phone}` : party.name;
+    option.label = text;
+    option.textContent = text;
     suggestions.appendChild(option);
   });
 }
@@ -1694,7 +1696,7 @@ function suggestRetailCustomers(mode = retailBillingMode) {
 
   clearTimeout(retailCustomerSuggestTimer);
 
-  if (!suggestions || query.length < 2) {
+  if (!suggestions || query.length < 1) {
     if (suggestions) suggestions.innerHTML = "";
     return;
   }
@@ -1729,7 +1731,7 @@ function suggestPaymentReceiptParties() {
 
   clearTimeout(paymentReceiptSuggestTimer);
 
-  if (!suggestions || query.length < 2) {
+  if (!suggestions || query.length < 1) {
     if (suggestions) suggestions.innerHTML = "";
     return;
   }
