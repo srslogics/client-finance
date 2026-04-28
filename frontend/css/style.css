@@ -709,8 +709,10 @@ input[type="file"] {
 }
 
 .retail-mode-switch {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+  width: 100%;
   padding: 6px;
   margin-top: 16px;
   border: 1px solid var(--line);
@@ -720,12 +722,15 @@ input[type="file"] {
 
 .retail-mode-button {
   min-height: 40px;
+  min-width: 0;
   padding: 8px 18px;
   border: 0;
   border-radius: 10px;
   background: transparent;
   color: var(--muted);
   font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
 }
 
 .retail-mode-button.active {
@@ -1146,6 +1151,10 @@ input[type="file"] {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .retail-mode-switch {
+    grid-template-columns: 1fr;
+  }
+
   .retail-billing-grid,
   .retail-form-grid,
   .retail-notes-grid {
@@ -1171,6 +1180,15 @@ input[type="file"] {
     grid-template-columns: 1fr;
   }
 
+  .section-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .section-head button {
+    width: 100%;
+  }
+
   .retail-billing-grid,
   .retail-form-grid,
   .retail-item-row,
@@ -1178,6 +1196,16 @@ input[type="file"] {
   .dressed-stock-row,
   .retail-notes-grid {
     grid-template-columns: 1fr;
+  }
+
+  .retail-mode-switch {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .retail-mode-button {
+    padding: 10px 8px;
+    font-size: 14px;
   }
 }
 

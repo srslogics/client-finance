@@ -192,7 +192,13 @@ function setRetailBillingMode(mode) {
   if (retailHistorySection) retailHistorySection.style.display = retailBillingMode === "payment" ? "none" : "";
   if (paymentHistorySection) paymentHistorySection.style.display = retailBillingMode === "payment" ? "" : "none";
   if (modeTitle) modeTitle.innerText = retailBillingMode === "dressed" ? "Dressed Billing" : retailBillingMode === "payment" ? "Payment Receipt" : "Regular Billing";
-  if (previewTitle) previewTitle.innerText = retailBillingMode === "payment" ? "Payment Receipt Preview" : "Retail Bill Preview";
+  if (previewTitle) previewTitle.innerText = retailBillingMode === "payment"
+    ? "Payment Receipt Preview"
+    : retailBillingMode === "dressed"
+      ? "Dressed Bill Preview"
+      : "Regular Bill Preview";
+  const historyTitle = document.getElementById("retailHistoryTitle");
+  if (historyTitle) historyTitle.innerText = retailBillingMode === "dressed" ? "Recent Dressed Bills" : "Recent Retail Bills";
   if (addItemButton) addItemButton.innerText = retailBillingMode === "dressed" ? "Add Dressed Item" : "Add Regular Item";
 
   if (retailBillingMode === "payment") {
@@ -1132,30 +1138,15 @@ async function saveDressedStock() {
 
 async function loadDressedStock() {
   const date = document.getElementById("retailDate")?.value;
-  const summary = document.getElementById("dressedStockSummary");
-  if (!summary || !date) return;
+  if (!date) return;
 
   try {
     const data = await optionalApiCall(`/dressed-stock?date=${encodeURIComponent(date)}`, { entries: [], available_items: [] }, "GET", null, { cache: false });
     dressedStockCache = data.available_items || [];
     dressedStockLoadedForDate = date;
-    if (!dressedStockCache.length) {
-      summary.innerHTML = `<div class="thermal-empty">No dressed stock saved for this date yet.</div>`;
-      return;
-    }
-
-    summary.innerHTML = dressedStockCache.map(item => `
-      <div class="retail-stock-card">
-        <strong>${escapeHtml(item.item_name)}</strong>
-        <span>Live NAG: ${formatBillNag(item.live_quantity || 0)}</span>
-        <span>Live weight: ${Number(item.live_weight || 0).toFixed(3)} kg</span>
-        <span>Available dressed: ${Number(item.available_dressed_weight || 0).toFixed(3)} kg</span>
-      </div>
-    `).join("");
   } catch (e) {
     console.error(e);
     dressedStockLoadedForDate = "";
-    summary.innerHTML = `<div class="thermal-empty">Unable to load dressed stock.</div>`;
   }
 }
 

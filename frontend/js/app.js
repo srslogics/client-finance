@@ -1,4 +1,7 @@
+let currentPage = "";
+
 function loadPage(page) {
+    currentPage = page;
     const content = document.getElementById("content");
     const title = document.getElementById("pageTitle");
 
@@ -518,7 +521,7 @@ function loadPage(page) {
                   <div class="retail-shortcuts" id="dressedStockSetupSection">
                     <div class="retail-shortcuts-head">
                       <span>Dressed Stock Entry</span>
-                      <p>Enter live stock and available dressed weight. Bills deduct dressed weight automatically.</p>
+                      <p>Enter live stock and dressed weight. Bills deduct dressed weight automatically.</p>
                     </div>
                     <div id="dressedStockRows" class="retail-items"></div>
                     <div class="retail-item-actions">
@@ -543,7 +546,7 @@ function loadPage(page) {
             </div>
           </div>
 
-          <div class="section">
+          <div class="section" id="retailBillHistorySection">
             <div class="section-head">
               <div>
                 <span>Saved Bills</span>
@@ -857,6 +860,10 @@ function loadPage(page) {
     if (window.lucide && typeof window.lucide.createIcons === "function") {
       window.lucide.createIcons();
     }
+  }
+
+  function isActivePage(page) {
+    return currentPage === page;
   }
 
   let toastTimer = null;

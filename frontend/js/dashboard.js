@@ -4,13 +4,17 @@ const dashboardCharts = {
   leakage: null
 };
 
+let dashboardRequestToken = 0;
+
 async function loadDashboard() {
+  const requestToken = ++dashboardRequestToken;
   const date = document.getElementById("dashboardDate").value;
 
   if (!date) return showToast("Select date");
 
   try {
     const data = await apiCall(`/dashboard?date=${date}`);
+    if (!isActivePage("dashboard") || requestToken !== dashboardRequestToken) return;
     if (data.error) {
       showToast(data.error);
       return;
@@ -48,13 +52,16 @@ async function loadDashboard() {
     if (cachedInventory) renderInventory(cachedInventory.inventory || []);
 
     optionalApiCall(trendUrl, [], "GET", null, { loader: false, cache: true }).then(trend => {
+      if (!isActivePage("dashboard") || requestToken !== dashboardRequestToken) return;
       renderCharts(trend, []);
       generateInsights(data, trend);
     });
     optionalApiCall(leakageUrl, [], "GET", null, { loader: false, cache: true }).then(leakage => {
+      if (!isActivePage("dashboard") || requestToken !== dashboardRequestToken) return;
       renderLeakageOnly(leakage);
     });
     optionalApiCall(inventoryUrl, { inventory: [] }, "GET", null, { loader: false, cache: true }).then(inventory => {
+      if (!isActivePage("dashboard") || requestToken !== dashboardRequestToken) return;
       renderInventory(inventory.inventory || []);
     });
 
@@ -64,11 +71,15 @@ async function loadDashboard() {
   }
 
   function renderLeakageOnly(leakage) {
+    if (!isActivePage("dashboard")) return;
     leakage = Array.isArray(leakage) ? leakage : [];
     if (typeof Chart === "undefined") {
       drawCanvasMessage("leakageChart", "Charts are unavailable. Check internet connection.");
       return;
     }
+
+    const canvas = document.getElementById("leakageChart");
+    if (!canvas) return;
 
     if (dashboardCharts.leakage) {
       dashboardCharts.leakage.destroy();
@@ -76,7 +87,7 @@ async function loadDashboard() {
     }
 
     if (leakage.length > 0) {
-      dashboardCharts.leakage = new Chart(document.getElementById("leakageChart"), {
+      dashboardCharts.leakage = new Chart(canvas, {
         type: "line",
         data: {
           labels: leakage.map(d => d.date),
@@ -92,16 +103,19 @@ async function loadDashboard() {
 }
 
 function setValue(id, value) {
-  document.getElementById(id).innerText =
-    "₹ " + Number(value || 0).toLocaleString();
+  const element = document.getElementById(id);
+  if (!element) return;
+  element.innerText = "₹ " + Number(value || 0).toLocaleString();
 }
 
 function setKgValue(id, value) {
-  document.getElementById(id).innerText =
-    Number(value || 0).toLocaleString() + " kg";
+  const element = document.getElementById(id);
+  if (!element) return;
+  element.innerText = Number(value || 0).toLocaleString() + " kg";
 }
 
 function renderCharts(trend, leakage) {
+    if (!isActivePage("dashboard")) return;
     destroyDashboardCharts();
 
     trend = Array.isArray(trend) ? trend : [];
@@ -126,7 +140,12 @@ function renderCharts(trend, leakage) {
       return;
     }
 
-    dashboardCharts.trend = new Chart(document.getElementById("trendChart"), {
+    const trendCanvas = document.getElementById("trendChart");
+    const profitCanvas = document.getElementById("profitChart");
+    const leakageCanvas = document.getElementById("leakageChart");
+    if (!trendCanvas || !profitCanvas || !leakageCanvas) return;
+
+    dashboardCharts.trend = new Chart(trendCanvas, {
       type: "line",
       data: {
         labels: dates,
@@ -137,7 +156,7 @@ function renderCharts(trend, leakage) {
       }
     });
 
-    dashboardCharts.profit = new Chart(document.getElementById("profitChart"), {
+    dashboardCharts.profit = new Chart(profitCanvas, {
       type: "line",
       data: {
         labels: dates,
@@ -155,7 +174,7 @@ function renderCharts(trend, leakage) {
     });
 
     if (leakage && leakage.length > 0) {
-      dashboardCharts.leakage = new Chart(document.getElementById("leakageChart"), {
+      dashboardCharts.leakage = new Chart(leakageCanvas, {
         type: "line",
         data: {
           labels: leakage.map(d => d.date),
@@ -184,6 +203,7 @@ function renderCharts(trend, leakage) {
   }
 
   function generateInsights(today, trend) {
+    if (!isActivePage("dashboard")) return;
 
     const list = document.getElementById("insightsList");
     if (!list) return;
@@ -223,6 +243,7 @@ function renderCharts(trend, leakage) {
   }
 
   function renderInventory(rows) {
+    if (!isActivePage("dashboard")) return;
     const body = document.getElementById("inventoryBody");
     if (!body) return;
 

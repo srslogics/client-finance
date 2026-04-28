@@ -8,7 +8,10 @@ const analyticsCharts = {
   profitByItem: null
 };
 
+let analyticsRequestToken = 0;
+
 async function loadAnalytics() {
+  const requestToken = ++analyticsRequestToken;
 
   const start = document.getElementById("startDate")?.value;
   const end = document.getElementById("endDate")?.value;
@@ -42,16 +45,17 @@ async function loadAnalytics() {
 
   showToast(cachedTrend ? "Refreshing analytics..." : "Loading analytics...");
 
-  loadAnalyticsPart(endpoints.summary, null, renderAnalyticsSummary);
-  loadAnalyticsPart(endpoints.trend, [], renderTrendCharts);
-  loadAnalyticsPart(endpoints.leakage, [], renderLeakageChart);
-  loadAnalyticsPart(endpoints.debtors, { top_debtors: [] }, renderDebtorChart);
-  loadAnalyticsPart(endpoints.profitByItem, [], renderProfitByItemChart);
-  loadAnalyticsPart(endpoints.itemVolume, [], renderItemVolumeChart);
-  loadAnalyticsPart(endpoints.paymentModes, [], renderPaymentModeChart);
+  loadAnalyticsPart(endpoints.summary, null, renderAnalyticsSummary, requestToken);
+  loadAnalyticsPart(endpoints.trend, [], renderTrendCharts, requestToken);
+  loadAnalyticsPart(endpoints.leakage, [], renderLeakageChart, requestToken);
+  loadAnalyticsPart(endpoints.debtors, { top_debtors: [] }, renderDebtorChart, requestToken);
+  loadAnalyticsPart(endpoints.profitByItem, [], renderProfitByItemChart, requestToken);
+  loadAnalyticsPart(endpoints.itemVolume, [], renderItemVolumeChart, requestToken);
+  loadAnalyticsPart(endpoints.paymentModes, [], renderPaymentModeChart, requestToken);
 }
 
 function renderAnalyticsSummary(summary) {
+  if (!isActivePage("analytics")) return;
   if (!summary || summary.error) return;
 
   setText("analyticsSales", formatMoney(summary.sales));
@@ -60,9 +64,10 @@ function renderAnalyticsSummary(summary) {
   setText("analyticsCash", formatMoney(summary.net_cash));
 }
 
-async function loadAnalyticsPart(url, fallback, renderer) {
+async function loadAnalyticsPart(url, fallback, renderer, requestToken) {
   try {
     const data = await optionalApiCall(url, fallback, "GET", null, { loader: false, cache: true });
+    if (!isActivePage("analytics") || requestToken !== analyticsRequestToken) return;
     renderer(data);
   } catch (e) {
     console.error(e);
@@ -70,6 +75,7 @@ async function loadAnalyticsPart(url, fallback, renderer) {
 }
 
 function resetAnalyticsView() {
+    if (!isActivePage("analytics")) return;
     destroyAnalyticsCharts();
 
     ["trendChart", "cashFlowChart", "leakageChart", "itemVolumeChart", "debtorChart", "paymentModeChart", "profitByItemChart"].forEach(id => {
@@ -86,11 +92,15 @@ function canRenderCharts(chartIds) {
 }
 
 function renderTrendCharts(trend) {
+    if (!isActivePage("analytics")) return;
     trend = Array.isArray(trend) ? trend : [];
     if (!canRenderCharts(["trendChart", "cashFlowChart"])) return;
 
     destroyChart("trend");
     destroyChart("cashFlow");
+    const trendCanvas = document.getElementById("trendChart");
+    const cashFlowCanvas = document.getElementById("cashFlowChart");
+    if (!trendCanvas || !cashFlowCanvas) return;
     const dates = trend.map(d => d.date);
     const sales = trend.map(d => d.sales || 0);
     const purchase = trend.map(d => d.purchase || 0);
@@ -98,7 +108,7 @@ function renderTrendCharts(trend) {
 
     // --- Trend Chart ---
     if (trend && trend.length > 0) {
-      analyticsCharts.trend = new Chart(document.getElementById("trendChart"), {
+      analyticsCharts.trend = new Chart(trendCanvas, {
         type: "line",
         data: {
           labels: dates,
@@ -113,7 +123,7 @@ function renderTrendCharts(trend) {
     }
 
     if (trend && trend.length > 0) {
-      analyticsCharts.cashFlow = new Chart(document.getElementById("cashFlowChart"), {
+      analyticsCharts.cashFlow = new Chart(cashFlowCanvas, {
         type: "bar",
         data: {
           labels: dates,
@@ -134,12 +144,15 @@ function renderTrendCharts(trend) {
 }
 
 function renderLeakageChart(leakage) {
+    if (!isActivePage("analytics")) return;
     leakage = Array.isArray(leakage) ? leakage : [];
     if (!canRenderCharts(["leakageChart"])) return;
 
     destroyChart("leakage");
+    const canvas = document.getElementById("leakageChart");
+    if (!canvas) return;
     if (leakage && leakage.length > 0) {
-      analyticsCharts.leakage = new Chart(document.getElementById("leakageChart"), {
+      analyticsCharts.leakage = new Chart(canvas, {
         type: "line",
         data: {
           labels: leakage.map(d => d.date),
@@ -158,12 +171,15 @@ function renderLeakageChart(leakage) {
 }
 
 function renderItemVolumeChart(itemVolume) {
+    if (!isActivePage("analytics")) return;
     itemVolume = Array.isArray(itemVolume) ? itemVolume : [];
     if (!canRenderCharts(["itemVolumeChart"])) return;
 
     destroyChart("itemVolume");
+    const canvas = document.getElementById("itemVolumeChart");
+    if (!canvas) return;
     if (itemVolume.length > 0) {
-      analyticsCharts.itemVolume = new Chart(document.getElementById("itemVolumeChart"), {
+      analyticsCharts.itemVolume = new Chart(canvas, {
         type: "bar",
         data: {
           labels: itemVolume.map(d => d.item),
@@ -183,12 +199,15 @@ function renderItemVolumeChart(itemVolume) {
 }
 
 function renderDebtorChart(debtors) {
+    if (!isActivePage("analytics")) return;
     const topDebtors = Array.isArray(debtors?.top_debtors) ? debtors.top_debtors : [];
     if (!canRenderCharts(["debtorChart"])) return;
 
     destroyChart("debtor");
+    const canvas = document.getElementById("debtorChart");
+    if (!canvas) return;
     if (topDebtors.length > 0) {
-      analyticsCharts.debtor = new Chart(document.getElementById("debtorChart"), {
+      analyticsCharts.debtor = new Chart(canvas, {
         type: "bar",
         data: {
           labels: topDebtors.map(d => d.party_name),
@@ -205,12 +224,15 @@ function renderDebtorChart(debtors) {
 }
 
 function renderPaymentModeChart(paymentModes) {
+    if (!isActivePage("analytics")) return;
     paymentModes = Array.isArray(paymentModes) ? paymentModes : [];
     if (!canRenderCharts(["paymentModeChart"])) return;
 
     destroyChart("paymentMode");
+    const canvas = document.getElementById("paymentModeChart");
+    if (!canvas) return;
     if (paymentModes.length > 0) {
-      analyticsCharts.paymentMode = new Chart(document.getElementById("paymentModeChart"), {
+      analyticsCharts.paymentMode = new Chart(canvas, {
         type: "doughnut",
         data: {
           labels: paymentModes.map(d => d.mode),
@@ -227,12 +249,15 @@ function renderPaymentModeChart(paymentModes) {
 }
 
 function renderProfitByItemChart(profitByItem) {
+    if (!isActivePage("analytics")) return;
     profitByItem = Array.isArray(profitByItem) ? profitByItem : [];
     if (!canRenderCharts(["profitByItemChart"])) return;
 
     destroyChart("profitByItem");
+    const canvas = document.getElementById("profitByItemChart");
+    if (!canvas) return;
     if (profitByItem && profitByItem.length > 0) {
-      analyticsCharts.profitByItem = new Chart(document.getElementById("profitByItemChart"), {
+      analyticsCharts.profitByItem = new Chart(canvas, {
         type: "bar",
         data: {
           labels: profitByItem.map(d => d.item),

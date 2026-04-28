@@ -533,13 +533,9 @@ async function savePartyDirectoryEntry() {
 }
 
 async function loadPartyDirectory() {
-  const body = document.getElementById("partyDirectoryBody");
   const select = document.getElementById("directoryPartySelect");
-  if (!body && !select) return;
+  if (!select) return;
 
-  if (body) {
-    body.innerHTML = `<tr><td colspan="4" class="empty">Loading saved parties...</td></tr>`;
-  }
   if (select) {
     select.innerHTML = `<option value="">Loading saved parties...</option>`;
   }
@@ -557,30 +553,10 @@ async function loadPartyDirectory() {
       });
     }
     if (!results.length) {
-      if (body) {
-        body.innerHTML = `<tr><td colspan="4" class="empty">No saved parties yet</td></tr>`;
-      }
       return;
-    }
-
-    if (body) {
-      body.innerHTML = "";
-      results.forEach(party => {
-        const row = document.createElement("tr");
-        row.innerHTML = `
-          <td>${escapeHtml(party.name || "")}</td>
-          <td>${escapeHtml(party.type || "BOTH")}</td>
-          <td>${escapeHtml(party.phone || "-")}</td>
-          <td>${escapeHtml(party.address || "-")}</td>
-        `;
-        body.appendChild(row);
-      });
     }
   } catch (e) {
     console.error(e);
-    if (body) {
-      body.innerHTML = `<tr><td colspan="4" class="empty">Saved parties failed to load</td></tr>`;
-    }
     if (select) {
       select.innerHTML = `<option value="">Saved parties failed to load</option>`;
     }
