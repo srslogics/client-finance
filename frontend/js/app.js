@@ -430,14 +430,6 @@ function loadPage(page) {
                     <div id="retailDressedShortcutItems" class="retail-shortcut-list"></div>
                   </div>
 
-                  <div class="retail-shortcuts">
-                    <div class="retail-shortcuts-head">
-                      <span>Available Dressed Stock</span>
-                      <p>As dressed bills are saved, the remaining dressed weight goes down automatically.</p>
-                    </div>
-                    <div id="dressedStockSummary" class="retail-stock-summary"></div>
-                  </div>
-
                   <div class="retail-shortcuts-head">
                     <span>Dressed Billing</span>
                     <p>Bill dressed chicken separately with item name, kgs, rate, and amount.</p>
