@@ -1920,7 +1920,7 @@ function getRetailReceiptMarkup(bill) {
       <div class="thermal-rule">----------------------------------------------</div>
 
       <div class="thermal-summary">
-        <p><span>Total Item(s): ${bill.items.length}</span><span>${isDressedOnlyBill ? `KGS : ${Number(bill.total_weight || 0).toFixed(3)}` : `/Qty : ${formatBillNag(bill.total_nag || bill.total_quantity || 0)}`}</span></p>
+        <p><span>Total Item(s): ${bill.items.length}</span><span>${isDressedOnlyBill ? `KGS : ${Number(bill.total_weight || 0).toFixed(3)}` : `/NAG : ${formatBillNag(bill.total_nag || bill.total_quantity || 0)}`}</span></p>
         <p><span>Total Kgs</span><strong>${Number(bill.total_weight || 0).toFixed(3)}</strong></p>
         <p class="thermal-total"><span>TOTAL</span><strong>${formatBillMoney(bill.total_amount)}</strong></p>
         <p><span>${escapeHtml(bill.payment_mode || "Cash")} Payment</span><strong>${formatBillMoney(bill.paid_amount)}</strong></p>
