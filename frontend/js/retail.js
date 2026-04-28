@@ -191,15 +191,31 @@ function setRetailBillingMode(mode) {
     : "Add your own quick regular items with default rate.";
   if (retailHistorySection) retailHistorySection.style.display = retailBillingMode === "payment" ? "none" : "";
   if (paymentHistorySection) paymentHistorySection.style.display = retailBillingMode === "payment" ? "" : "none";
-  if (modeTitle) modeTitle.innerText = retailBillingMode === "dressed" ? "Dressed Billing" : retailBillingMode === "payment" ? "Payment Receipt" : "Regular Billing";
-  if (previewTitle) previewTitle.innerText = retailBillingMode === "payment"
-    ? "Payment Receipt Preview"
-    : retailBillingMode === "dressed"
-      ? "Dressed Bill Preview"
-      : "Regular Bill Preview";
   const historyTitle = document.getElementById("retailHistoryTitle");
-  if (historyTitle) historyTitle.innerText = retailBillingMode === "dressed" ? "Recent Dressed Bills" : "Recent Retail Bills";
-  if (addItemButton) addItemButton.innerText = retailBillingMode === "dressed" ? "Add Dressed Item" : "Add Regular Item";
+  if (modeTitle) {
+    if (retailBillingMode === "dressed") {
+      modeTitle.innerText = "Dressed Billing";
+    } else if (retailBillingMode === "payment") {
+      modeTitle.innerText = "Payment Receipt";
+    } else {
+      modeTitle.innerText = "Regular Billing";
+    }
+  }
+  if (previewTitle) {
+    if (retailBillingMode === "payment") {
+      previewTitle.innerText = "Payment Receipt Preview";
+    } else if (retailBillingMode === "dressed") {
+      previewTitle.innerText = "Dressed Bill Preview";
+    } else {
+      previewTitle.innerText = "Regular Bill Preview";
+    }
+  }
+  if (historyTitle) {
+    historyTitle.innerText = retailBillingMode === "dressed" ? "Recent Dressed Bills" : "Recent Retail Bills";
+  }
+  if (addItemButton) {
+    addItemButton.innerText = retailBillingMode === "dressed" ? "Add Dressed Item" : "Add Regular Item";
+  }
 
   if (retailBillingMode === "payment") {
     ensurePaymentReceiptModeReady();
@@ -440,7 +456,7 @@ function addRetailItemRow(item = null, defaultLineType = "STANDARD") {
       <option value="KGS">KGS</option>
       <option value="PCS">PCS</option>
     </select>
-    <input type="number" class="retailWeight" placeholder="Weight (kg)" min="0" step="0.001" oninput="recalcRetailLine(this)">
+    <input type="number" class="retailWeight" placeholder="KGS" min="0" step="0.001" oninput="recalcRetailLine(this)">
     <input type="number" class="retailRate" placeholder="Rate" min="0" step="0.01" oninput="recalcRetailLine(this)">
     <input type="number" class="retailAmount" placeholder="Amount" min="0" step="0.01" oninput="markRetailAmountDirty(this)">
     <button type="button" onclick="removeRetailItemRow(this)">Remove</button>
@@ -481,8 +497,10 @@ function addShortcutRetailItem(shortcut) {
 
   itemInput.value = shortcut.name;
   targetRow.dataset.lineType = lineType;
-  if (lineType !== "DRESSED" && !qtyInput.value) qtyInput.value = "1";
   unitSelect.value = shortcut.unit || "KGS";
+  if (lineType !== "DRESSED" && !qtyInput.value && unitSelect.value === "PCS") {
+    qtyInput.value = "1";
+  }
   if (Number(shortcut.rate || 0) > 0) {
     rateInput.value = Number(shortcut.rate).toFixed(2);
   }
@@ -546,22 +564,16 @@ function recalcRetailLine(source) {
 
   if (lineType === "DRESSED") {
     if (unitInput) unitInput.value = "KGS";
+  }
 
-    if (weight > 0 && amount > 0) {
-      rate = amount / weight;
-      rateInput.value = rate.toFixed(2);
-    } else if (weight > 0 && rate > 0 && source !== amountInput) {
-      amount = weight * rate;
-      amountInput.value = amount.toFixed(2);
-    } else if (weight <= 0 || amount <= 0) {
-      rateInput.value = "";
+  if (lineType === "DRESSED") {
+    const base = weight;
+    if (rate > 0 && base > 0 && source !== amountInput) {
+      amountInput.value = (base * rate).toFixed(2);
+    } else if (amount > 0 && base > 0 && source === amountInput) {
+      rateInput.value = (amount / base).toFixed(2);
     }
   } else {
-    if (unit === "KGS" && quantity > 0 && weight <= 0) {
-      weight = quantity;
-      weightInput.value = quantity;
-    }
-
     const base = weight > 0 ? weight : quantity;
     if (rate > 0 && base > 0 && source !== amountInput) {
       amountInput.value = (base * rate).toFixed(2);
@@ -619,18 +631,19 @@ function collectRetailItemsFromForm(mode = retailBillingMode) {
     .map(row => {
       const lineType = getRetailRowLineType(row);
       const quantity = lineType === "DRESSED" ? 0 : Number(row.querySelector(".retailQty")?.value || 0);
+      const weight = Number(row.querySelector(".retailWeight")?.value || 0);
       return {
         item_name: row.querySelector(".retailItemName")?.value.trim(),
         line_type: lineType,
         nag: quantity,
         quantity,
         unit: lineType === "DRESSED" ? "KGS" : (row.querySelector(".retailUnit")?.value || "KGS"),
-        weight: Number(row.querySelector(".retailWeight")?.value || 0),
+        weight,
         rate: Number(row.querySelector(".retailRate")?.value || 0),
         amount: Number(row.querySelector(".retailAmount")?.value || 0)
       };
     })
-    .filter(item => item.item_name && (item.line_type === "DRESSED" ? item.weight > 0 : item.quantity > 0));
+    .filter(item => item.item_name && (item.line_type === "DRESSED" ? item.weight > 0 : (item.quantity > 0 || item.weight > 0)));
 }
 
 function buildRetailBillFromForm(mode = retailBillingMode) {
