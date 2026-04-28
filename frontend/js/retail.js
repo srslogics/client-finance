@@ -288,11 +288,14 @@ async function ensureRetailPartyDirectoryLoaded(force = false) {
 function getRetailPartyMatches(query) {
   const normalizedQuery = normalizeRetailPartyLookup(query);
   if (!normalizedQuery) return [];
+  const digitQuery = String(query || "").replace(/\D/g, "");
 
   return retailPartyDirectoryCache.filter(party => {
     const normalizedName = normalizeRetailPartyLookup(party.name);
     const normalizedPhone = String(party.phone || "").replace(/\D/g, "");
-    return normalizedName.includes(normalizedQuery) || normalizedPhone.includes(normalizedQuery.replace(/\D/g, ""));
+    const nameMatch = normalizedName.includes(normalizedQuery);
+    const phoneMatch = digitQuery ? normalizedPhone.includes(digitQuery) : false;
+    return nameMatch || phoneMatch;
   }).slice(0, 12);
 }
 
@@ -354,6 +357,28 @@ function getCachedPartyProfile(name) {
   const normalized = normalizeRetailPartyLookup(name);
   if (!normalized) return null;
   return retailPartyDirectoryCache.find(party => normalizeRetailPartyLookup(party.name) === normalized) || null;
+}
+
+function applyRetailPartyToFields(party, mode = retailBillingMode) {
+  if (!party) return;
+  const input = retailField(mode, "customerName");
+  const phoneInput = retailField(mode, "customerPhone");
+  const addressInput = retailField(mode, "customerAddress");
+  if (input) input.value = party.name || input.value;
+  if (phoneInput && !phoneInput.value.trim()) phoneInput.value = party.phone || "";
+  if (addressInput && !addressInput.value.trim()) addressInput.value = party.address || "";
+  scheduleRetailPreviewRender();
+}
+
+function applyPaymentReceiptPartyToFields(party) {
+  if (!party) return;
+  const input = document.getElementById("paymentReceiptPartyName");
+  const phoneInput = document.getElementById("paymentReceiptPartyPhone");
+  const addressInput = document.getElementById("paymentReceiptPartyAddress");
+  if (input) input.value = party.name || input.value;
+  if (phoneInput && !phoneInput.value.trim()) phoneInput.value = party.phone || "";
+  if (addressInput && !addressInput.value.trim()) addressInput.value = party.address || "";
+  schedulePaymentReceiptPreviewRender();
 }
 
 function isCurrentRetailBillForActiveMode() {
@@ -1747,17 +1772,15 @@ function suggestRetailCustomers(mode = retailBillingMode) {
   }
 
   const cachedMatches = getRetailPartyMatches(query);
+  const exactParty = getCachedPartyProfile(query);
+  if (exactParty) {
+    applyRetailPartyToFields(exactParty, mode);
+  }
   if (cachedMatches.length) {
     fillPartySuggestions(suggestions, cachedMatches);
     renderPartySuggestionBox("retailCustomerSuggestBox", cachedMatches, party => {
-      const input = retailField(mode, "customerName");
-      if (input) input.value = party.name;
-      const phoneInput = retailField(mode, "customerPhone");
-      const addressInput = retailField(mode, "customerAddress");
-      if (phoneInput && !phoneInput.value.trim()) phoneInput.value = party.phone || "";
-      if (addressInput && !addressInput.value.trim()) addressInput.value = party.address || "";
+      applyRetailPartyToFields(party, mode);
       hideSuggestionBox("retailCustomerSuggestBox");
-      scheduleRetailPreviewRender();
     });
   }
 
@@ -1768,14 +1791,8 @@ function suggestRetailCustomers(mode = retailBillingMode) {
       if (localMatches.length) {
         fillPartySuggestions(suggestions, localMatches);
         renderPartySuggestionBox("retailCustomerSuggestBox", localMatches, party => {
-          const input = retailField(mode, "customerName");
-          if (input) input.value = party.name;
-          const phoneInput = retailField(mode, "customerPhone");
-          const addressInput = retailField(mode, "customerAddress");
-          if (phoneInput && !phoneInput.value.trim()) phoneInput.value = party.phone || "";
-          if (addressInput && !addressInput.value.trim()) addressInput.value = party.address || "";
+          applyRetailPartyToFields(party, mode);
           hideSuggestionBox("retailCustomerSuggestBox");
-          scheduleRetailPreviewRender();
         });
         return;
       }
@@ -1783,14 +1800,8 @@ function suggestRetailCustomers(mode = retailBillingMode) {
       const data = await optionalApiCall(`/party/search?name=${encodeURIComponent(query)}`, { results: [] });
       fillPartySuggestions(suggestions, data.results || []);
       renderPartySuggestionBox("retailCustomerSuggestBox", data.results || [], party => {
-        const input = retailField(mode, "customerName");
-        if (input) input.value = party.name;
-        const phoneInput = retailField(mode, "customerPhone");
-        const addressInput = retailField(mode, "customerAddress");
-        if (phoneInput && !phoneInput.value.trim()) phoneInput.value = party.phone || "";
-        if (addressInput && !addressInput.value.trim()) addressInput.value = party.address || "";
+        applyRetailPartyToFields(party, mode);
         hideSuggestionBox("retailCustomerSuggestBox");
-        scheduleRetailPreviewRender();
       });
     } catch (e) {
       console.error(e);
@@ -1814,17 +1825,15 @@ function suggestPaymentReceiptParties() {
   }
 
   const cachedMatches = getRetailPartyMatches(query);
+  const exactParty = getCachedPartyProfile(query);
+  if (exactParty) {
+    applyPaymentReceiptPartyToFields(exactParty);
+  }
   if (cachedMatches.length) {
     fillPartySuggestions(suggestions, cachedMatches);
     renderPartySuggestionBox("paymentReceiptPartySuggestBox", cachedMatches, party => {
-      const input = document.getElementById("paymentReceiptPartyName");
-      const phoneInput = document.getElementById("paymentReceiptPartyPhone");
-      const addressInput = document.getElementById("paymentReceiptPartyAddress");
-      if (input) input.value = party.name;
-      if (phoneInput && !phoneInput.value.trim()) phoneInput.value = party.phone || "";
-      if (addressInput && !addressInput.value.trim()) addressInput.value = party.address || "";
+      applyPaymentReceiptPartyToFields(party);
       hideSuggestionBox("paymentReceiptPartySuggestBox");
-      schedulePaymentReceiptPreviewRender();
     });
   }
 
@@ -1835,14 +1844,8 @@ function suggestPaymentReceiptParties() {
       if (localMatches.length) {
         fillPartySuggestions(suggestions, localMatches);
         renderPartySuggestionBox("paymentReceiptPartySuggestBox", localMatches, party => {
-          const input = document.getElementById("paymentReceiptPartyName");
-          const phoneInput = document.getElementById("paymentReceiptPartyPhone");
-          const addressInput = document.getElementById("paymentReceiptPartyAddress");
-          if (input) input.value = party.name;
-          if (phoneInput && !phoneInput.value.trim()) phoneInput.value = party.phone || "";
-          if (addressInput && !addressInput.value.trim()) addressInput.value = party.address || "";
+          applyPaymentReceiptPartyToFields(party);
           hideSuggestionBox("paymentReceiptPartySuggestBox");
-          schedulePaymentReceiptPreviewRender();
         });
         return;
       }
@@ -1850,14 +1853,8 @@ function suggestPaymentReceiptParties() {
       const data = await optionalApiCall(`/party/search?name=${encodeURIComponent(query)}`, { results: [] });
       fillPartySuggestions(suggestions, data.results || []);
       renderPartySuggestionBox("paymentReceiptPartySuggestBox", data.results || [], party => {
-        const input = document.getElementById("paymentReceiptPartyName");
-        const phoneInput = document.getElementById("paymentReceiptPartyPhone");
-        const addressInput = document.getElementById("paymentReceiptPartyAddress");
-        if (input) input.value = party.name;
-        if (phoneInput && !phoneInput.value.trim()) phoneInput.value = party.phone || "";
-        if (addressInput && !addressInput.value.trim()) addressInput.value = party.address || "";
+        applyPaymentReceiptPartyToFields(party);
         hideSuggestionBox("paymentReceiptPartySuggestBox");
-        schedulePaymentReceiptPreviewRender();
       });
     } catch (e) {
       console.error(e);
