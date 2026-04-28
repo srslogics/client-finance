@@ -33,6 +33,9 @@ let paymentReceiptPreviewRenderTimer = null;
 let retailPageBootstrapped = false;
 let paymentReceiptHistoryLoaded = false;
 let dressedStockLoadedForDate = "";
+let retailPartyDirectoryCache = [];
+let retailPartyDirectoryLoaded = false;
+let retailPartyDirectoryPromise = null;
 
 const RETAIL_MODE_FIELDS = {
   regular: {
@@ -150,6 +153,7 @@ function initRetailPage() {
   renderRetailOfflineBanner();
   syncRetailSettlementUi();
   setRetailBillingMode("regular");
+  ensureRetailPartyDirectoryLoaded();
   refreshRetailBillNumber();
   scheduleRetailPreviewRender();
   loadRetailBills();
@@ -248,6 +252,62 @@ function normalizeRetailBillMode(bill) {
 
 function getActiveRetailDate() {
   return retailField("regular", "date")?.value || "";
+}
+
+function normalizeRetailPartyLookup(value) {
+  return String(value || "").toLowerCase().replace(/\s+/g, "").replace(/\./g, "").trim();
+}
+
+async function ensureRetailPartyDirectoryLoaded(force = false) {
+  if (retailPartyDirectoryLoaded && !force) return retailPartyDirectoryCache;
+  if (retailPartyDirectoryPromise && !force) return retailPartyDirectoryPromise;
+
+  retailPartyDirectoryPromise = optionalApiCall(
+    "/party-directory",
+    { results: [] },
+    "GET",
+    null,
+    { cache: true }
+  ).then(data => {
+    retailPartyDirectoryCache = Array.isArray(data?.results) ? data.results : [];
+    retailPartyDirectoryLoaded = true;
+    retailPartyDirectoryPromise = null;
+    return retailPartyDirectoryCache;
+  }).catch(err => {
+    console.error(err);
+    retailPartyDirectoryPromise = null;
+    return retailPartyDirectoryCache;
+  });
+
+  return retailPartyDirectoryPromise;
+}
+
+function getRetailPartyMatches(query) {
+  const normalizedQuery = normalizeRetailPartyLookup(query);
+  if (!normalizedQuery) return [];
+
+  return retailPartyDirectoryCache.filter(party => {
+    const normalizedName = normalizeRetailPartyLookup(party.name);
+    const normalizedPhone = String(party.phone || "").replace(/\D/g, "");
+    return normalizedName.includes(normalizedQuery) || normalizedPhone.includes(normalizedQuery.replace(/\D/g, ""));
+  }).slice(0, 12);
+}
+
+function fillPartySuggestions(suggestions, parties) {
+  if (!suggestions) return;
+  suggestions.innerHTML = "";
+  parties.forEach(party => {
+    const option = document.createElement("option");
+    option.value = party.name;
+    option.label = party.phone ? `${party.name} - ${party.phone}` : party.name;
+    suggestions.appendChild(option);
+  });
+}
+
+function getCachedPartyProfile(name) {
+  const normalized = normalizeRetailPartyLookup(name);
+  if (!normalized) return null;
+  return retailPartyDirectoryCache.find(party => normalizeRetailPartyLookup(party.name) === normalized) || null;
 }
 
 function isCurrentRetailBillForActiveMode() {
@@ -1639,16 +1699,22 @@ function suggestRetailCustomers(mode = retailBillingMode) {
     return;
   }
 
+  const cachedMatches = getRetailPartyMatches(query);
+  if (cachedMatches.length) {
+    fillPartySuggestions(suggestions, cachedMatches);
+  }
+
   retailCustomerSuggestTimer = setTimeout(async () => {
     try {
+      await ensureRetailPartyDirectoryLoaded();
+      const localMatches = getRetailPartyMatches(query);
+      if (localMatches.length) {
+        fillPartySuggestions(suggestions, localMatches);
+        return;
+      }
+
       const data = await optionalApiCall(`/party/search?name=${encodeURIComponent(query)}`, { results: [] });
-      suggestions.innerHTML = "";
-      (data.results || []).forEach(party => {
-        const option = document.createElement("option");
-        option.value = party.name;
-        option.label = party.phone ? `${party.name} - ${party.phone}` : party.name;
-        suggestions.appendChild(option);
-      });
+      fillPartySuggestions(suggestions, data.results || []);
     } catch (e) {
       console.error(e);
       suggestions.innerHTML = "";
@@ -1668,16 +1734,22 @@ function suggestPaymentReceiptParties() {
     return;
   }
 
+  const cachedMatches = getRetailPartyMatches(query);
+  if (cachedMatches.length) {
+    fillPartySuggestions(suggestions, cachedMatches);
+  }
+
   paymentReceiptSuggestTimer = setTimeout(async () => {
     try {
+      await ensureRetailPartyDirectoryLoaded();
+      const localMatches = getRetailPartyMatches(query);
+      if (localMatches.length) {
+        fillPartySuggestions(suggestions, localMatches);
+        return;
+      }
+
       const data = await optionalApiCall(`/party/search?name=${encodeURIComponent(query)}`, { results: [] });
-      suggestions.innerHTML = "";
-      (data.results || []).forEach(party => {
-        const option = document.createElement("option");
-        option.value = party.name;
-        option.label = party.phone ? `${party.name} - ${party.phone}` : party.name;
-        suggestions.appendChild(option);
-      });
+      fillPartySuggestions(suggestions, data.results || []);
     } catch (e) {
       console.error(e);
       suggestions.innerHTML = "";
@@ -1690,6 +1762,17 @@ async function hydrateRetailCustomerProfile(name, mode = retailBillingMode) {
   if (query.length < 2) return;
 
   try {
+    await ensureRetailPartyDirectoryLoaded();
+    const cachedParty = getCachedPartyProfile(query);
+    if (cachedParty) {
+      const phoneInput = retailField(mode, "customerPhone");
+      const addressInput = retailField(mode, "customerAddress");
+      if (phoneInput && !phoneInput.value.trim()) phoneInput.value = cachedParty.phone || "";
+      if (addressInput && !addressInput.value.trim()) addressInput.value = cachedParty.address || "";
+      scheduleRetailPreviewRender();
+      return;
+    }
+
     const data = await optionalApiCall(`/party/profile?name=${encodeURIComponent(query)}`, null, "GET", null, { cache: false });
     const party = data?.party;
     if (!party) return;
@@ -1709,6 +1792,17 @@ async function hydratePaymentReceiptPartyProfile(name) {
   if (query.length < 2) return;
 
   try {
+    await ensureRetailPartyDirectoryLoaded();
+    const cachedParty = getCachedPartyProfile(query);
+    if (cachedParty) {
+      const phoneInput = document.getElementById("paymentReceiptPartyPhone");
+      const addressInput = document.getElementById("paymentReceiptPartyAddress");
+      if (phoneInput && !phoneInput.value.trim()) phoneInput.value = cachedParty.phone || "";
+      if (addressInput && !addressInput.value.trim()) addressInput.value = cachedParty.address || "";
+      schedulePaymentReceiptPreviewRender();
+      return;
+    }
+
     const data = await optionalApiCall(`/party/profile?name=${encodeURIComponent(query)}`, null, "GET", null, { cache: false });
     const party = data?.party;
     if (!party) return;

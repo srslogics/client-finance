@@ -2284,7 +2284,7 @@ def list_party_directory(name: str | None = None, db: Session = Depends(get_db))
             )
         )
 
-    parties = query.order_by(models.Party.name.asc()).limit(50).all()
+    parties = query.order_by(models.Party.name.asc()).limit(500).all()
     return {
         "results": [
             {
