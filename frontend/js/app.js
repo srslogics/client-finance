@@ -404,7 +404,10 @@ function loadPage(page) {
                       <option value="Bank">Bank</option>
                       <option value="Credit">Credit</option>
                     </select>
-                    <input type="text" id="retailCustomerName" placeholder="Customer name (optional)" list="retailCustomerSuggestions" autocomplete="off" oninput="suggestRetailCustomers()">
+                    <div class="typeahead-field">
+                      <input type="text" id="retailCustomerName" placeholder="Customer name (optional)" list="retailCustomerSuggestions" autocomplete="off" oninput="suggestRetailCustomers()" onfocus="suggestRetailCustomers()">
+                      <div id="retailCustomerSuggestBox" class="typeahead-box"></div>
+                    </div>
                     <input type="text" id="retailCustomerPhone" placeholder="Phone (optional)">
                     <input type="text" id="retailCustomerAddress" placeholder="Address (optional)">
                   </div>
@@ -476,7 +479,10 @@ function loadPage(page) {
                     <option value="Bank">Bank</option>
                     <option value="Cheque">Cheque</option>
                   </select>
-                  <input type="text" id="paymentReceiptPartyName" placeholder="Party name" list="paymentReceiptPartySuggestions" autocomplete="off" oninput="suggestPaymentReceiptParties()">
+                  <div class="typeahead-field">
+                    <input type="text" id="paymentReceiptPartyName" placeholder="Party name" list="paymentReceiptPartySuggestions" autocomplete="off" oninput="suggestPaymentReceiptParties()" onfocus="suggestPaymentReceiptParties()">
+                    <div id="paymentReceiptPartySuggestBox" class="typeahead-box"></div>
+                  </div>
                   <datalist id="paymentReceiptPartySuggestions"></datalist>
                   <input type="text" id="paymentReceiptPartyPhone" placeholder="Phone (optional)">
                   <input type="text" id="paymentReceiptPartyAddress" placeholder="Address (optional)">

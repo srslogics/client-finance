@@ -36,6 +36,7 @@ let dressedStockLoadedForDate = "";
 let retailPartyDirectoryCache = [];
 let retailPartyDirectoryLoaded = false;
 let retailPartyDirectoryPromise = null;
+let retailSuggestHideTimer = null;
 
 const RETAIL_MODE_FIELDS = {
   regular: {
@@ -106,6 +107,7 @@ function initRetailPage() {
   if (customerNameInput) {
     customerNameInput.addEventListener("change", () => hydrateRetailCustomerProfile(customerNameInput.value));
     customerNameInput.addEventListener("blur", () => hydrateRetailCustomerProfile(customerNameInput.value));
+    customerNameInput.addEventListener("blur", () => scheduleSuggestionBoxHide("retailCustomerSuggestBox"));
   }
 
   const paymentReceiptDate = document.getElementById("paymentReceiptDate");
@@ -144,6 +146,7 @@ function initRetailPage() {
   if (paymentReceiptPartyName) {
     paymentReceiptPartyName.addEventListener("change", () => hydratePaymentReceiptPartyProfile(paymentReceiptPartyName.value));
     paymentReceiptPartyName.addEventListener("blur", () => hydratePaymentReceiptPartyProfile(paymentReceiptPartyName.value));
+    paymentReceiptPartyName.addEventListener("blur", () => scheduleSuggestionBoxHide("paymentReceiptPartySuggestBox"));
   }
 
   attachRetailConnectivityListeners();
@@ -304,6 +307,47 @@ function fillPartySuggestions(suggestions, parties) {
     option.textContent = text;
     suggestions.appendChild(option);
   });
+}
+
+function renderPartySuggestionBox(boxId, parties, onPick) {
+  const box = document.getElementById(boxId);
+  if (!box) return;
+  box.innerHTML = "";
+
+  if (!parties.length) {
+    box.style.display = "none";
+    return;
+  }
+
+  parties.forEach(party => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "typeahead-option";
+    button.innerHTML = `
+      <strong>${party.name}</strong>
+      ${party.phone ? `<span>${party.phone}</span>` : ""}
+    `;
+    button.onmousedown = evt => {
+      evt.preventDefault();
+      onPick(party);
+    };
+    box.appendChild(button);
+  });
+
+  box.style.display = "block";
+}
+
+function hideSuggestionBox(boxId) {
+  const box = document.getElementById(boxId);
+  if (box) {
+    box.innerHTML = "";
+    box.style.display = "none";
+  }
+}
+
+function scheduleSuggestionBoxHide(boxId) {
+  clearTimeout(retailSuggestHideTimer);
+  retailSuggestHideTimer = setTimeout(() => hideSuggestionBox(boxId), 120);
 }
 
 function getCachedPartyProfile(name) {
@@ -1698,12 +1742,23 @@ function suggestRetailCustomers(mode = retailBillingMode) {
 
   if (!suggestions || query.length < 1) {
     if (suggestions) suggestions.innerHTML = "";
+    hideSuggestionBox("retailCustomerSuggestBox");
     return;
   }
 
   const cachedMatches = getRetailPartyMatches(query);
   if (cachedMatches.length) {
     fillPartySuggestions(suggestions, cachedMatches);
+    renderPartySuggestionBox("retailCustomerSuggestBox", cachedMatches, party => {
+      const input = retailField(mode, "customerName");
+      if (input) input.value = party.name;
+      const phoneInput = retailField(mode, "customerPhone");
+      const addressInput = retailField(mode, "customerAddress");
+      if (phoneInput && !phoneInput.value.trim()) phoneInput.value = party.phone || "";
+      if (addressInput && !addressInput.value.trim()) addressInput.value = party.address || "";
+      hideSuggestionBox("retailCustomerSuggestBox");
+      scheduleRetailPreviewRender();
+    });
   }
 
   retailCustomerSuggestTimer = setTimeout(async () => {
@@ -1712,14 +1767,35 @@ function suggestRetailCustomers(mode = retailBillingMode) {
       const localMatches = getRetailPartyMatches(query);
       if (localMatches.length) {
         fillPartySuggestions(suggestions, localMatches);
+        renderPartySuggestionBox("retailCustomerSuggestBox", localMatches, party => {
+          const input = retailField(mode, "customerName");
+          if (input) input.value = party.name;
+          const phoneInput = retailField(mode, "customerPhone");
+          const addressInput = retailField(mode, "customerAddress");
+          if (phoneInput && !phoneInput.value.trim()) phoneInput.value = party.phone || "";
+          if (addressInput && !addressInput.value.trim()) addressInput.value = party.address || "";
+          hideSuggestionBox("retailCustomerSuggestBox");
+          scheduleRetailPreviewRender();
+        });
         return;
       }
 
       const data = await optionalApiCall(`/party/search?name=${encodeURIComponent(query)}`, { results: [] });
       fillPartySuggestions(suggestions, data.results || []);
+      renderPartySuggestionBox("retailCustomerSuggestBox", data.results || [], party => {
+        const input = retailField(mode, "customerName");
+        if (input) input.value = party.name;
+        const phoneInput = retailField(mode, "customerPhone");
+        const addressInput = retailField(mode, "customerAddress");
+        if (phoneInput && !phoneInput.value.trim()) phoneInput.value = party.phone || "";
+        if (addressInput && !addressInput.value.trim()) addressInput.value = party.address || "";
+        hideSuggestionBox("retailCustomerSuggestBox");
+        scheduleRetailPreviewRender();
+      });
     } catch (e) {
       console.error(e);
       suggestions.innerHTML = "";
+      hideSuggestionBox("retailCustomerSuggestBox");
     }
   }, 200);
 }
@@ -1733,12 +1809,23 @@ function suggestPaymentReceiptParties() {
 
   if (!suggestions || query.length < 1) {
     if (suggestions) suggestions.innerHTML = "";
+    hideSuggestionBox("paymentReceiptPartySuggestBox");
     return;
   }
 
   const cachedMatches = getRetailPartyMatches(query);
   if (cachedMatches.length) {
     fillPartySuggestions(suggestions, cachedMatches);
+    renderPartySuggestionBox("paymentReceiptPartySuggestBox", cachedMatches, party => {
+      const input = document.getElementById("paymentReceiptPartyName");
+      const phoneInput = document.getElementById("paymentReceiptPartyPhone");
+      const addressInput = document.getElementById("paymentReceiptPartyAddress");
+      if (input) input.value = party.name;
+      if (phoneInput && !phoneInput.value.trim()) phoneInput.value = party.phone || "";
+      if (addressInput && !addressInput.value.trim()) addressInput.value = party.address || "";
+      hideSuggestionBox("paymentReceiptPartySuggestBox");
+      schedulePaymentReceiptPreviewRender();
+    });
   }
 
   paymentReceiptSuggestTimer = setTimeout(async () => {
@@ -1747,14 +1834,35 @@ function suggestPaymentReceiptParties() {
       const localMatches = getRetailPartyMatches(query);
       if (localMatches.length) {
         fillPartySuggestions(suggestions, localMatches);
+        renderPartySuggestionBox("paymentReceiptPartySuggestBox", localMatches, party => {
+          const input = document.getElementById("paymentReceiptPartyName");
+          const phoneInput = document.getElementById("paymentReceiptPartyPhone");
+          const addressInput = document.getElementById("paymentReceiptPartyAddress");
+          if (input) input.value = party.name;
+          if (phoneInput && !phoneInput.value.trim()) phoneInput.value = party.phone || "";
+          if (addressInput && !addressInput.value.trim()) addressInput.value = party.address || "";
+          hideSuggestionBox("paymentReceiptPartySuggestBox");
+          schedulePaymentReceiptPreviewRender();
+        });
         return;
       }
 
       const data = await optionalApiCall(`/party/search?name=${encodeURIComponent(query)}`, { results: [] });
       fillPartySuggestions(suggestions, data.results || []);
+      renderPartySuggestionBox("paymentReceiptPartySuggestBox", data.results || [], party => {
+        const input = document.getElementById("paymentReceiptPartyName");
+        const phoneInput = document.getElementById("paymentReceiptPartyPhone");
+        const addressInput = document.getElementById("paymentReceiptPartyAddress");
+        if (input) input.value = party.name;
+        if (phoneInput && !phoneInput.value.trim()) phoneInput.value = party.phone || "";
+        if (addressInput && !addressInput.value.trim()) addressInput.value = party.address || "";
+        hideSuggestionBox("paymentReceiptPartySuggestBox");
+        schedulePaymentReceiptPreviewRender();
+      });
     } catch (e) {
       console.error(e);
       suggestions.innerHTML = "";
+      hideSuggestionBox("paymentReceiptPartySuggestBox");
     }
   }, 200);
 }
