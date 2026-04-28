@@ -48,8 +48,10 @@ async function searchLedger() {
 
       // --- No data
       if (!data.ledger || data.ledger.length === 0) {
-        body.innerHTML = `<tr><td colspan="7" class="empty">No records found</td></tr>`;
+        const partyLabel = data.party_name || name;
+        body.innerHTML = `<tr><td colspan="7" class="empty">${partyLabel} found, but opening balance is 0 and no transactions are recorded yet</td></tr>`;
         total.innerText = formatMoney(data.total_balance || 0);
+        renderPartySummary(data.summary ? { summary: data.summary } : null);
         return;
       }
 

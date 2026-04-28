@@ -3640,7 +3640,7 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
                     models.Transaction.amount
                 ),
                 (
-                    (models.Transaction.date < target_date) & (models.Transaction.type == "OPENING") & (models.Transaction.category == "RECEIVABLE"),
+                    (models.Transaction.date <= target_date) & (models.Transaction.type == "OPENING") & (models.Transaction.category == "RECEIVABLE"),
                     models.Transaction.amount
                 ),
                 (
@@ -3675,7 +3675,7 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
                     models.Transaction.amount
                 ),
                 (
-                    (models.Transaction.date < target_date) & (models.Transaction.type == "OPENING") & (models.Transaction.category == "PAYABLE"),
+                    (models.Transaction.date <= target_date) & (models.Transaction.type == "OPENING") & (models.Transaction.category == "PAYABLE"),
                     models.Transaction.amount
                 ),
                 (
