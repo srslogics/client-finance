@@ -430,7 +430,7 @@ function loadPage(page) {
                   <div class="retail-shortcuts">
                     <div class="retail-shortcuts-head">
                       <span>Dressed Shortcuts</span>
-                      <p>Tap an item to add it to the dressed billing side with its default rate.</p>
+                      <p>Tap an item to add it to the dressed billing side.</p>
                     </div>
                     <div id="retailDressedShortcutItems" class="retail-shortcut-list"></div>
                   </div>

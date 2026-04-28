@@ -170,6 +170,8 @@ function setRetailBillingMode(mode) {
   const dressedStockSetupSection = document.getElementById("dressedStockSetupSection");
   const shortcutLineType = document.getElementById("shortcutLineType");
   const shortcutManagerHelp = document.getElementById("shortcutManagerHelp");
+  const shortcutRate = document.getElementById("shortcutRate");
+  const shortcutUnit = document.getElementById("shortcutUnit");
   const retailHistorySection = document.getElementById("retailBillHistorySection");
   const paymentHistorySection = document.getElementById("paymentReceiptHistorySection");
   const modeTitle = document.getElementById("retailModeTitle");
@@ -187,8 +189,10 @@ function setRetailBillingMode(mode) {
   if (dressedStockSetupSection) dressedStockSetupSection.style.display = retailBillingMode === "dressed" ? "" : "none";
   if (shortcutLineType) shortcutLineType.value = retailBillingMode === "dressed" ? "DRESSED" : "STANDARD";
   if (shortcutManagerHelp) shortcutManagerHelp.innerText = retailBillingMode === "dressed"
-    ? "Add your own quick dressed items with default rate."
+    ? "Add your own quick dressed items."
     : "Add your own quick regular items with default rate.";
+  if (shortcutRate) shortcutRate.style.display = retailBillingMode === "dressed" ? "none" : "";
+  if (shortcutUnit) shortcutUnit.style.display = retailBillingMode === "dressed" ? "none" : "";
   if (retailHistorySection) retailHistorySection.style.display = retailBillingMode === "payment" ? "none" : "";
   if (paymentHistorySection) paymentHistorySection.style.display = retailBillingMode === "payment" ? "" : "none";
   const historyTitle = document.getElementById("retailHistoryTitle");
@@ -313,12 +317,15 @@ function renderRetailShortcuts() {
   regularContainer.innerHTML = "";
   dressedContainer.innerHTML = "";
   getRetailShortcuts().forEach(shortcut => {
+    const shortcutLineType = (shortcut.line_type || "STANDARD").toUpperCase();
     const button = document.createElement("button");
     button.type = "button";
     button.className = "retail-shortcut-chip";
-    button.innerText = `${shortcut.name}${Number(shortcut.rate || 0) > 0 ? ` - Rs ${Number(shortcut.rate).toFixed(2)}` : ""}`;
+    button.innerText = shortcutLineType === "DRESSED"
+      ? `${shortcut.name}`
+      : `${shortcut.name}${Number(shortcut.rate || 0) > 0 ? ` - Rs ${Number(shortcut.rate).toFixed(2)}` : ""}`;
     button.onclick = () => addShortcutRetailItem(shortcut);
-    if ((shortcut.line_type || "STANDARD").toUpperCase() === "DRESSED") {
+    if (shortcutLineType === "DRESSED") {
       dressedContainer.appendChild(button);
     } else {
       regularContainer.appendChild(button);
@@ -351,11 +358,11 @@ function setRetailShortcuts(shortcuts) {
 
 function saveRetailShortcut() {
   const name = document.getElementById("shortcutName")?.value.trim();
-  const rate = Number(document.getElementById("shortcutRate")?.value || 0);
   const lineType = retailBillingMode === "dressed"
     ? "DRESSED"
     : (document.getElementById("shortcutLineType")?.value || "STANDARD");
-  const unit = document.getElementById("shortcutUnit")?.value || "KGS";
+  const rate = lineType === "DRESSED" ? 0 : Number(document.getElementById("shortcutRate")?.value || 0);
+  const unit = lineType === "DRESSED" ? "KGS" : (document.getElementById("shortcutUnit")?.value || "KGS");
 
   if (!name) {
     showToast("Enter shortcut item name");
@@ -369,7 +376,8 @@ function saveRetailShortcut() {
   renderRetailShortcuts();
   renderShortcutManagerList();
   document.getElementById("shortcutName").value = "";
-  document.getElementById("shortcutRate").value = "";
+  const shortcutRateInput = document.getElementById("shortcutRate");
+  if (shortcutRateInput) shortcutRateInput.value = "";
   showToast("Shortcut saved");
 }
 
@@ -390,7 +398,9 @@ function renderShortcutManagerList() {
     const chip = document.createElement("div");
     chip.className = "retail-shortcut-chip retail-shortcut-chip-managed";
     const text = document.createElement("span");
-    text.innerText = `${shortcut.name} | ${shortcut.line_type || "STANDARD"} | ${shortcut.unit || "KGS"} | Rs ${Number(shortcut.rate || 0).toFixed(2)}`;
+    text.innerText = activeLineType === "DRESSED"
+      ? `${shortcut.name} | DRESSED`
+      : `${shortcut.name} | ${shortcut.line_type || "STANDARD"} | ${shortcut.unit || "KGS"} | Rs ${Number(shortcut.rate || 0).toFixed(2)}`;
     const button = document.createElement("button");
     button.type = "button";
     button.innerText = "Remove";
@@ -501,7 +511,7 @@ function addShortcutRetailItem(shortcut) {
   if (lineType !== "DRESSED" && !qtyInput.value && unitSelect.value === "PCS") {
     qtyInput.value = "1";
   }
-  if (Number(shortcut.rate || 0) > 0) {
+  if (lineType !== "DRESSED" && Number(shortcut.rate || 0) > 0) {
     rateInput.value = Number(shortcut.rate).toFixed(2);
   }
 
@@ -606,18 +616,11 @@ function applyRetailDefaults(row) {
 
   const shortcut = getRetailShortcutByName(itemName);
   if (shortcut) {
-    if (!unitInput.value || unitInput.value === "KGS") {
+    if (lineType !== "DRESSED" && (!unitInput.value || unitInput.value === "KGS")) {
       unitInput.value = shortcut.unit || unitInput.value || "KGS";
     }
-    if (Number(rateInput.value || 0) <= 0 && Number(shortcut.rate || 0) > 0) {
+    if (lineType !== "DRESSED" && Number(rateInput.value || 0) <= 0 && Number(shortcut.rate || 0) > 0) {
       rateInput.value = Number(shortcut.rate).toFixed(2);
-    }
-  }
-
-  if (lineType === "DRESSED") {
-    const dressedItem = getDressedStockByName(itemName);
-    if (dressedItem && Number(rateInput.value || 0) <= 0 && Number(dressedItem.default_rate || 0) > 0) {
-      rateInput.value = Number(dressedItem.default_rate).toFixed(2);
     }
   }
 }
