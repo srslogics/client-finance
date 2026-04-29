@@ -2887,15 +2887,81 @@ def get_dashboard(date: str, db: Session = Depends(get_db)):
             models.Transaction.date == target_date
         ).first()
 
+        daily_operational = db.query(
+            func.sum(
+                case(
+                    (
+                        (models.Transaction.type == "SALE") &
+                        (models.Transaction.category.in_(["RETAIL", "RETAIL DRESSED"])),
+                        models.Transaction.amount
+                    ),
+                    else_=0
+                )
+            ).label("retail_sales"),
+            func.sum(
+                case(
+                    (
+                        (models.Transaction.type == "SALE") &
+                        (models.Transaction.category == "RETAIL DRESSED"),
+                        models.Transaction.amount
+                    ),
+                    else_=0
+                )
+            ).label("dressed_sales_amount"),
+            func.sum(
+                case(
+                    (
+                        (models.Transaction.type == "PAYMENT") &
+                        (models.Transaction.category == "RECEIVED"),
+                        models.Transaction.amount
+                    ),
+                    else_=0
+                )
+            ).label("payments_received"),
+            func.sum(
+                case(
+                    (
+                        (models.Transaction.type == "PAYMENT") &
+                        (models.Transaction.category == "PAID"),
+                        models.Transaction.amount
+                    ),
+                    else_=0
+                )
+            ).label("payments_paid"),
+            func.sum(
+                case(
+                    (models.Transaction.type == "MORTALITY", models.Transaction.weight),
+                    else_=0
+                )
+            ).label("mortality_weight"),
+            func.sum(
+                case(
+                    (models.Transaction.type == "MORTALITY", models.Transaction.quantity),
+                    else_=0
+                )
+            ).label("mortality_quantity")
+        ).filter(
+            models.Transaction.date == target_date
+        ).first()
+
         sales = daily_totals.sales or 0
         purchase = daily_totals.purchase or 0
         receivable = totals.receivable or 0
         payable = totals.payable or 0
+        retail_sales = daily_operational.retail_sales or 0
+        dressed_sales_amount = daily_operational.dressed_sales_amount or 0
+        payments_received = daily_operational.payments_received or 0
+        payments_paid = daily_operational.payments_paid or 0
+        mortality_weight = daily_operational.mortality_weight or 0
+        mortality_quantity = daily_operational.mortality_quantity or 0
 
         # --- Stock ---
         stock = db.query(models.DailyStock).filter(
             models.DailyStock.date == target_date
         ).first()
+        processed_rows = db.query(models.DailyItemStock).filter(
+            models.DailyItemStock.date == target_date
+        ).count()
 
         # --- Profit (simple approximation) ---
         profit = float(sales or 0) - float(purchase or 0)
@@ -2916,7 +2982,14 @@ def get_dashboard(date: str, db: Session = Depends(get_db)):
 
         "receivable": float(receivable),
         "payable": float(payable),
-        "total_outstanding": float(receivable + payable)
+        "total_outstanding": float(receivable + payable),
+        "retail_sales": float(retail_sales or 0),
+        "dressed_sales_amount": float(dressed_sales_amount or 0),
+        "payments_received": float(payments_received or 0),
+        "payments_paid": float(payments_paid or 0),
+        "mortality_weight": float(mortality_weight or 0),
+        "mortality_quantity": float(mortality_quantity or 0),
+        "processed_items_count": int(processed_rows or 0)
     }
 
 

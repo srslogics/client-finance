@@ -27,6 +27,19 @@ async function loadDashboard() {
     setValue("receivable", data.receivable);
     setValue("payable", data.payable);
     setValue("outstanding", data.total_outstanding);
+    setValue("dashboardRetailSales", data.retail_sales);
+    setValue("dashboardDressedSales", data.dressed_sales_amount);
+    setValue("dashboardPaymentsReceived", data.payments_received);
+    setValue("dashboardPaymentsPaid", data.payments_paid);
+    setKgValue("dashboardMortality", data.mortality_weight);
+    setTextValue("dashboardMortalityNag", `${Number(data.mortality_quantity || 0).toLocaleString()} NAG`);
+    setTextValue("dashboardProcessStatus", Number(data.processed_items_count || 0) > 0 ? "Processed" : "Pending");
+    setTextValue(
+      "dashboardProcessMeta",
+      Number(data.processed_items_count || 0) > 0
+        ? `${Number(data.processed_items_count || 0).toLocaleString()} item rows processed`
+        : "No item rows processed"
+    );
 
     // --- Date range (last 7 days)
     const today = parseDateInput(date);
@@ -112,6 +125,12 @@ function setKgValue(id, value) {
   const element = document.getElementById(id);
   if (!element) return;
   element.innerText = Number(value || 0).toLocaleString() + " kg";
+}
+
+function setTextValue(id, value) {
+  const element = document.getElementById(id);
+  if (!element) return;
+  element.innerText = value ?? "";
 }
 
 function renderCharts(trend, leakage) {
@@ -231,8 +250,16 @@ function renderCharts(trend, leakage) {
       addInsight("High leakage detected");
     }
 
+    if ((today.mortality_weight || 0) > 0) {
+      addInsight(`Mortality recorded: ${Number(today.mortality_weight || 0).toLocaleString()} kg`);
+    }
+
     if ((today.total_outstanding || 0) > 100000) {
       addInsight("Outstanding is high. Review collections.");
+    }
+
+    if ((today.payments_received || 0) > (today.sales || 0)) {
+      addInsight("Collections are stronger than today's billing.");
     }
   }
 

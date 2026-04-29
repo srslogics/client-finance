@@ -348,6 +348,10 @@ input[type="file"] {
   margin-bottom: 20px;
 }
 
+.dashboard-secondary-grid {
+  margin-top: 16px;
+}
+
 .daily-sheet-card {
   overflow: hidden;
 }
@@ -545,6 +549,15 @@ input[type="file"] {
 .metric h3,
 .metric p {
   margin: 0;
+}
+
+.dashboard-secondary-grid .metric p {
+  position: relative;
+  z-index: 1;
+  margin-top: 10px;
+  opacity: 0.82;
+  font-size: 13px;
+  line-height: 1.35;
 }
 
 .metric.blue {

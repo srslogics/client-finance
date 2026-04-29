@@ -214,7 +214,7 @@ function loadPage(page) {
 
           <div class="page-intro">
             <span>Executive View</span>
-            <h2>Revenue, stock movement, leakage, and outstanding balances</h2>
+            <h2>Revenue, retail counter movement, payments, mortality, and stock control</h2>
           </div>
 
           <div class="card filter toolbar">
@@ -224,12 +224,12 @@ function loadPage(page) {
 
           <div class="grid kpi-grid">
             <div class="metric blue">
-              <span>Revenue</span>
+              <span>Today's Revenue</span>
               <h2 id="sales">₹ 0</h2>
             </div>
 
             <div class="metric dark">
-              <span>Cost</span>
+              <span>Today's Cost</span>
               <h2 id="purchase">₹ 0</h2>
             </div>
 
@@ -256,6 +256,40 @@ function loadPage(page) {
             <div class="metric green">
               <span>Total Outstanding</span>
               <h2 id="outstanding">₹ 0</h2>
+            </div>
+          </div>
+
+          <div class="grid dashboard-secondary-grid">
+            <div class="metric blue">
+              <span>Retail Sales</span>
+              <h2 id="dashboardRetailSales">₹ 0</h2>
+            </div>
+
+            <div class="metric dark">
+              <span>Dressed Sales</span>
+              <h2 id="dashboardDressedSales">₹ 0</h2>
+            </div>
+
+            <div class="metric green">
+              <span>Payments In</span>
+              <h2 id="dashboardPaymentsReceived">₹ 0</h2>
+            </div>
+
+            <div class="metric dark">
+              <span>Payments Out</span>
+              <h2 id="dashboardPaymentsPaid">₹ 0</h2>
+            </div>
+
+            <div class="metric red">
+              <span>Mortality</span>
+              <h2 id="dashboardMortality">0 kg</h2>
+              <p id="dashboardMortalityNag">0 NAG</p>
+            </div>
+
+            <div class="metric green">
+              <span>Process Status</span>
+              <h2 id="dashboardProcessStatus">Pending</h2>
+              <p id="dashboardProcessMeta">No item rows processed</p>
             </div>
           </div>
 
