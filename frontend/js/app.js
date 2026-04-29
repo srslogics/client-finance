@@ -212,127 +212,170 @@ function loadPage(page) {
       content.innerHTML = `
         <div class="container">
 
-          <div class="page-intro">
-            <span>Executive View</span>
-            <h2>Revenue, retail counter movement, payments, mortality, and stock control</h2>
+          <div class="page-intro dashboard-intro">
+            <span>Control Center</span>
+            <h2>Daily revenue, stock control, collections, and counter activity in one working view</h2>
+            <p>Use this as the owner screen for the day: load one date, scan the headline numbers, then move into charts and stock detail only where something needs attention.</p>
           </div>
 
-          <div class="card filter toolbar">
-            <input type="date" id="dashboardDate">
-            <button onclick="loadDashboard()">Load</button>
+          <div class="card toolbar dashboard-toolbar">
+            <div class="dashboard-toolbar-copy">
+              <span>Working Date</span>
+              <h3>Load one day and review the business quickly</h3>
+            </div>
+            <div class="dashboard-toolbar-actions">
+              <input type="date" id="dashboardDate">
+              <button onclick="loadDashboard()">Load Dashboard</button>
+            </div>
           </div>
 
-          <div class="grid kpi-grid">
-            <div class="metric blue">
+          <div class="dashboard-kpi-grid">
+            <div class="dashboard-kpi-card tone-blue">
               <span>Today's Revenue</span>
               <h2 id="sales">₹ 0</h2>
+              <p>Total sales booked for the selected day</p>
             </div>
 
-            <div class="metric dark">
+            <div class="dashboard-kpi-card tone-slate">
               <span>Today's Cost</span>
               <h2 id="purchase">₹ 0</h2>
+              <p>Stock purchase value recorded for the day</p>
             </div>
 
-            <div class="metric profit">
+            <div class="dashboard-kpi-card tone-green">
               <span>Profit</span>
               <h2 id="profit">₹ 0</h2>
+              <p>Simple operating spread for the selected day</p>
             </div>
 
-            <div class="metric red">
+            <div class="dashboard-kpi-card tone-red">
               <span>Leakage</span>
               <h2 id="leakage">0 kg</h2>
-            </div>
-
-            <div class="metric green">
-              <span>Receivable</span>
-              <h2 id="receivable">₹ 0</h2>
-            </div>
-
-            <div class="metric dark">
-              <span>Payable</span>
-              <h2 id="payable">₹ 0</h2>
-            </div>
-
-            <div class="metric green">
-              <span>Total Outstanding</span>
-              <h2 id="outstanding">₹ 0</h2>
+              <p>Difference between expected and actual stock</p>
             </div>
           </div>
 
-          <div class="grid dashboard-secondary-grid">
-            <div class="metric blue">
+          <div class="dashboard-kpi-grid dashboard-kpi-grid-secondary">
+            <div class="dashboard-kpi-card tone-green">
+              <span>Receivable</span>
+              <h2 id="receivable">₹ 0</h2>
+              <p>Money expected from parties up to this date</p>
+            </div>
+
+            <div class="dashboard-kpi-card tone-slate">
+              <span>Payable</span>
+              <h2 id="payable">₹ 0</h2>
+              <p>Money to be paid out up to this date</p>
+            </div>
+
+            <div class="dashboard-kpi-card tone-green">
+              <span>Total Outstanding</span>
+              <h2 id="outstanding">₹ 0</h2>
+              <p>Combined open balance across parties</p>
+            </div>
+          </div>
+
+          <div class="dashboard-mini-grid">
+            <div class="dashboard-mini-card">
               <span>Retail Sales</span>
               <h2 id="dashboardRetailSales">₹ 0</h2>
             </div>
 
-            <div class="metric dark">
+            <div class="dashboard-mini-card">
               <span>Dressed Sales</span>
               <h2 id="dashboardDressedSales">₹ 0</h2>
             </div>
 
-            <div class="metric green">
+            <div class="dashboard-mini-card">
               <span>Payments In</span>
               <h2 id="dashboardPaymentsReceived">₹ 0</h2>
             </div>
 
-            <div class="metric dark">
+            <div class="dashboard-mini-card">
               <span>Payments Out</span>
               <h2 id="dashboardPaymentsPaid">₹ 0</h2>
             </div>
 
-            <div class="metric red">
+            <div class="dashboard-mini-card">
               <span>Mortality</span>
               <h2 id="dashboardMortality">0 kg</h2>
               <p id="dashboardMortalityNag">0 NAG</p>
             </div>
 
-            <div class="metric green">
+            <div class="dashboard-mini-card">
               <span>Process Status</span>
               <h2 id="dashboardProcessStatus">Pending</h2>
               <p id="dashboardProcessMeta">No item rows processed</p>
             </div>
           </div>
 
-          <div class="chart-grid">
-          <div class="card chart-card">
-            <h2>Sales vs Purchase Trend</h2>
-            <canvas id="trendChart"></canvas>
+          <div class="chart-grid dashboard-chart-grid">
+            <div class="card chart-card dashboard-chart-card">
+              <div class="dashboard-card-head">
+                <div>
+                  <span>Trend</span>
+                  <h2>Sales vs Purchase Trend</h2>
+                </div>
+              </div>
+              <canvas id="trendChart"></canvas>
+            </div>
+
+            <div class="card chart-card dashboard-chart-card">
+              <div class="dashboard-card-head">
+                <div>
+                  <span>Margin</span>
+                  <h2>Profit Trend</h2>
+                </div>
+              </div>
+              <canvas id="profitChart"></canvas>
+            </div>
+
+            <div class="card chart-card dashboard-chart-card">
+              <div class="dashboard-card-head">
+                <div>
+                  <span>Counter Mix</span>
+                  <h2>Regular vs Dressed Billing</h2>
+                </div>
+              </div>
+              <canvas id="leakageChart"></canvas>
+            </div>
           </div>
 
-          <div class="card chart-card">
-            <h2>Profit Trend</h2>
-            <canvas id="profitChart"></canvas>
-          </div>
+          <div class="dashboard-detail-grid">
+            <div class="card insights dashboard-insights-card">
+              <div class="dashboard-card-head">
+                <div>
+                  <span>Observations</span>
+                  <h2>Daily Insights</h2>
+                </div>
+              </div>
+              <ul id="insightsList"></ul>
+            </div>
 
-          <div class="card chart-card">
-            <h2>Regular vs Dressed Billing</h2>
-            <canvas id="leakageChart"></canvas>
-          </div>
-          </div>
-
-          <div class="card insights">
-            <h2>Insights</h2>
-            <ul id="insightsList"></ul>
-          </div>
-
-          <div class="card table-card">
-            <h2>Inventory By Hen Type</h2>
-            <table>
-              <thead>
-                <tr>
-                  <th>Item</th>
-                  <th>Opening</th>
-                  <th>Purchase</th>
-                  <th>Sales</th>
-                  <th>Expected</th>
-                  <th>Actual</th>
-                  <th>Leakage</th>
-                </tr>
-              </thead>
-              <tbody id="inventoryBody">
-                <tr><td colspan="7" class="empty">No data yet</td></tr>
-              </tbody>
-            </table>
+            <div class="card table-card dashboard-inventory-card">
+              <div class="dashboard-card-head">
+                <div>
+                  <span>Stock Position</span>
+                  <h2>Inventory By Hen Type</h2>
+                </div>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Item</th>
+                    <th>Opening</th>
+                    <th>Purchase</th>
+                    <th>Sales</th>
+                    <th>Expected</th>
+                    <th>Actual</th>
+                    <th>Leakage</th>
+                  </tr>
+                </thead>
+                <tbody id="inventoryBody">
+                  <tr><td colspan="7" class="empty">No data yet</td></tr>
+                </tbody>
+              </table>
+            </div>
           </div>
 
         </div>
