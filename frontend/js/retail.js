@@ -760,11 +760,28 @@ function recalcRetailLine(source) {
   }
 
   if (lineType === "DRESSED") {
-    const base = weight;
-    if (rate > 0 && base > 0 && source !== amountInput) {
-      amountInput.value = (base * rate).toFixed(2);
-    } else if (amount > 0 && base > 0 && source === amountInput) {
-      rateInput.value = (amount / base).toFixed(2);
+    if (source === weightInput) {
+      if (rate > 0 && weight > 0) {
+        amountInput.value = (weight * rate).toFixed(2);
+      } else if (amount > 0 && weight > 0) {
+        rateInput.value = (amount / weight).toFixed(2);
+      }
+    } else if (source === rateInput) {
+      if (rate > 0 && amount > 0) {
+        weight = amount / rate;
+        weightInput.value = weight.toFixed(3);
+      } else if (rate > 0 && weight > 0) {
+        amountInput.value = (weight * rate).toFixed(2);
+      }
+    } else if (source === amountInput) {
+      if (rate > 0 && amount > 0) {
+        weight = amount / rate;
+        weightInput.value = weight.toFixed(3);
+      } else if (weight > 0 && amount > 0) {
+        rateInput.value = (amount / weight).toFixed(2);
+      }
+    } else if (rate > 0 && weight > 0 && amount <= 0) {
+      amountInput.value = (weight * rate).toFixed(2);
     }
   } else {
     const base = weight > 0 ? weight : quantity;
