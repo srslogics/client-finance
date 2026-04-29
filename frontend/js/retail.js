@@ -923,10 +923,8 @@ function renderPaymentReceiptPreviewFromForm() {
   renderPaymentReceiptPreview(buildPaymentReceiptFromForm(), true);
 }
 
-function markRetailAmountDirty() {
-  retailDraftDirty = true;
-  retailBillCompleted = false;
-  scheduleRetailPreviewRender();
+function markRetailAmountDirty(source) {
+  recalcRetailLine(source);
 }
 
 function markRetailDraftDirty() {
@@ -1087,7 +1085,10 @@ async function saveRetailBill() {
   }
 
   try {
-    const data = await apiCall("/retail-bills", "POST", JSON.stringify({
+    const isEditing = Boolean(currentRetailBill?.id && !String(currentRetailBill.id).startsWith("local-"));
+    const url = isEditing ? `/retail-bills/${currentRetailBill.id}` : "/retail-bills";
+    const method = isEditing ? "PUT" : "POST";
+    const data = await apiCall(url, method, JSON.stringify({
       date: draft.date,
       bill_number: draft.bill_number,
       cashier_name: draft.cashier_name,
@@ -1110,7 +1111,7 @@ async function saveRetailBill() {
     retailDraftDirty = false;
     retailBillCompleted = true;
     renderRetailPreview(currentRetailBill);
-    showToast(`Retail bill ${currentRetailBill.bill_number} saved`);
+    showToast(`Retail bill ${currentRetailBill.bill_number} ${isEditing ? "updated" : "saved"}`);
     await loadRetailBills();
     if (retailBillingMode === "dressed") {
       await loadDressedStock();
@@ -1172,7 +1173,10 @@ async function savePaymentReceipt() {
   }
 
   try {
-    const data = await apiCall("/payment-receipts", "POST", JSON.stringify(draft), { "Content-Type": "application/json" });
+    const isEditing = Boolean(currentPaymentReceipt?.id);
+    const url = isEditing ? `/payment-receipts/${currentPaymentReceipt.id}` : "/payment-receipts";
+    const method = isEditing ? "PUT" : "POST";
+    const data = await apiCall(url, method, JSON.stringify(draft), { "Content-Type": "application/json" });
     if (data.error) {
       showToast(data.error);
       return null;
@@ -1182,7 +1186,7 @@ async function savePaymentReceipt() {
     paymentReceiptDraftDirty = false;
     paymentReceiptCompleted = true;
     renderPaymentReceiptPreview(currentPaymentReceipt);
-    showToast(`Payment receipt ${currentPaymentReceipt.receipt_number} saved`);
+    showToast(`Payment receipt ${currentPaymentReceipt.receipt_number} ${isEditing ? "updated" : "saved"}`);
     await loadPaymentReceipts();
     return currentPaymentReceipt;
   } catch (e) {
