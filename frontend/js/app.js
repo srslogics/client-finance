@@ -410,6 +410,7 @@ function loadPage(page) {
                     </div>
                     <input type="text" id="retailCustomerPhone" placeholder="Phone (optional)">
                     <input type="text" id="retailCustomerAddress" placeholder="Address (optional)">
+                    <input type="number" id="retailIceAmount" placeholder="Ice amount (optional)" min="0" step="0.01">
                   </div>
                 </div>
 
@@ -433,7 +434,7 @@ function loadPage(page) {
                   <div class="retail-shortcuts">
                     <div class="retail-shortcuts-head">
                       <span>Dressed Shortcuts</span>
-                      <p>Tap an item to add it to the dressed billing side.</p>
+                      <p>Tap an item to add it with its default rate.</p>
                     </div>
                     <div id="retailDressedShortcutItems" class="retail-shortcut-list"></div>
                   </div>

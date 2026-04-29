@@ -106,6 +106,7 @@ def ensure_database_schema():
                 payment_mode VARCHAR,
                 total_quantity NUMERIC,
                 total_weight NUMERIC,
+                ice_amount NUMERIC,
                 total_amount NUMERIC,
                 paid_amount NUMERIC,
                 outstanding_amount NUMERIC,
@@ -114,6 +115,7 @@ def ensure_database_schema():
                 CONSTRAINT unique_retail_bill_number_per_day UNIQUE (date, bill_number)
             )
         """))
+        conn.execute(text("ALTER TABLE retail_bills ADD COLUMN IF NOT EXISTS ice_amount NUMERIC"))
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS retail_bill_items (
                 id UUID PRIMARY KEY,
@@ -628,6 +630,7 @@ def serialize_retail_bill(bill, items):
         "total_nag": float(bill.total_quantity or 0),
         "total_quantity": float(bill.total_quantity or 0),
         "total_weight": float(bill.total_weight or 0),
+        "ice_amount": float(bill.ice_amount or 0),
         "total_amount": float(bill.total_amount or 0),
         "paid_amount": float(bill.paid_amount or 0),
         "outstanding_amount": float(bill.outstanding_amount or 0),
@@ -3548,6 +3551,7 @@ def create_retail_bill(payload: dict = Body(...), db: Session = Depends(get_db))
     cashier_name = str(payload.get("cashier_name") or "admin").strip()
     payment_mode = str(payload.get("payment_mode") or "Cash").strip()
     notes = str(payload.get("notes") or "").strip()
+    ice_amount = parse_decimal(payload.get("ice_amount"))
     raw_paid_amount = payload.get("paid_amount")
     paid_amount = parse_decimal(raw_paid_amount)
 
@@ -3611,6 +3615,11 @@ def create_retail_bill(payload: dict = Body(...), db: Session = Depends(get_db))
         total_weight += weight
         total_amount += amount
 
+    if ice_amount < 0:
+        return {"error": "Ice amount cannot be negative"}
+
+    total_amount += ice_amount
+
     if raw_paid_amount in [None, ""] and payment_mode.strip().upper() != "CREDIT":
         paid_amount = total_amount
 
@@ -3639,6 +3648,7 @@ def create_retail_bill(payload: dict = Body(...), db: Session = Depends(get_db))
         payment_mode=payment_mode,
         total_quantity=total_quantity,
         total_weight=total_weight,
+        ice_amount=ice_amount,
         total_amount=total_amount,
         paid_amount=paid_amount,
         outstanding_amount=outstanding_amount,
@@ -3672,6 +3682,21 @@ def create_retail_bill(payload: dict = Body(...), db: Session = Depends(get_db))
             amount=item["amount"],
             payment_mode=payment_mode,
             source_ref=f"retail-bill:{bill.id}:{item['line_order']}"
+        ))
+
+    if ice_amount > 0:
+        db.add(models.Transaction(
+            date=target_date,
+            party_id=party_id,
+            type="SALE",
+            category="RETAIL DRESSED" if any(item["line_type"] == "DRESSED" for item in normalized_items) else "RETAIL",
+            item_type="ICE",
+            quantity=Decimal("0"),
+            weight=Decimal("0"),
+            rate=ice_amount,
+            amount=ice_amount,
+            payment_mode=payment_mode,
+            source_ref=f"retail-bill:{bill.id}:ice"
         ))
 
     if paid_amount > 0:
@@ -3738,6 +3763,7 @@ def update_retail_bill(bill_id: UUID, payload: dict = Body(...), db: Session = D
     cashier_name = str(payload.get("cashier_name") or "admin").strip()
     payment_mode = str(payload.get("payment_mode") or "Cash").strip()
     notes = str(payload.get("notes") or "").strip()
+    ice_amount = parse_decimal(payload.get("ice_amount"))
     raw_paid_amount = payload.get("paid_amount")
     paid_amount = parse_decimal(raw_paid_amount)
 
@@ -3801,6 +3827,11 @@ def update_retail_bill(bill_id: UUID, payload: dict = Body(...), db: Session = D
         total_weight += weight
         total_amount += amount
 
+    if ice_amount < 0:
+        return {"error": "Ice amount cannot be negative"}
+
+    total_amount += ice_amount
+
     if raw_paid_amount in [None, ""] and payment_mode.strip().upper() != "CREDIT":
         paid_amount = total_amount
 
@@ -3829,6 +3860,7 @@ def update_retail_bill(bill_id: UUID, payload: dict = Body(...), db: Session = D
     bill.payment_mode = payment_mode
     bill.total_quantity = total_quantity
     bill.total_weight = total_weight
+    bill.ice_amount = ice_amount
     bill.total_amount = total_amount
     bill.paid_amount = paid_amount
     bill.outstanding_amount = outstanding_amount
@@ -3870,6 +3902,21 @@ def update_retail_bill(bill_id: UUID, payload: dict = Body(...), db: Session = D
             amount=item["amount"],
             payment_mode=payment_mode,
             source_ref=f"retail-bill:{bill.id}:{item['line_order']}"
+        ))
+
+    if ice_amount > 0:
+        db.add(models.Transaction(
+            date=target_date,
+            party_id=party_id,
+            type="SALE",
+            category="RETAIL DRESSED" if any(item["line_type"] == "DRESSED" for item in normalized_items) else "RETAIL",
+            item_type="ICE",
+            quantity=Decimal("0"),
+            weight=Decimal("0"),
+            rate=ice_amount,
+            amount=ice_amount,
+            payment_mode=payment_mode,
+            source_ref=f"retail-bill:{bill.id}:ice"
         ))
 
     if paid_amount > 0:

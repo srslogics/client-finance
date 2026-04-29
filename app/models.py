@@ -124,6 +124,7 @@ class RetailBill(Base):
     payment_mode = Column(String)
     total_quantity = Column(Numeric)
     total_weight = Column(Numeric)
+    ice_amount = Column(Numeric)
     total_amount = Column(Numeric)
     paid_amount = Column(Numeric)
     outstanding_amount = Column(Numeric)

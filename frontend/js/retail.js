@@ -48,6 +48,7 @@ const RETAIL_MODE_FIELDS = {
     customerName: "retailCustomerName",
     customerPhone: "retailCustomerPhone",
     customerAddress: "retailCustomerAddress",
+    iceAmount: "retailIceAmount",
     paidAmount: "retailPaidAmount",
     notes: "retailNotes"
   },
@@ -60,6 +61,7 @@ const RETAIL_MODE_FIELDS = {
     customerName: "retailCustomerName",
     customerPhone: "retailCustomerPhone",
     customerAddress: "retailCustomerAddress",
+    iceAmount: "retailIceAmount",
     paidAmount: "retailPaidAmount",
     notes: "retailNotes"
   }
@@ -196,9 +198,9 @@ function setRetailBillingMode(mode) {
   if (dressedStockSetupSection) dressedStockSetupSection.style.display = retailBillingMode === "dressed" ? "" : "none";
   if (shortcutLineType) shortcutLineType.value = retailBillingMode === "dressed" ? "DRESSED" : "STANDARD";
   if (shortcutManagerHelp) shortcutManagerHelp.innerText = retailBillingMode === "dressed"
-    ? "Add your own quick dressed items."
+    ? "Add your own quick dressed items with default rate."
     : "Add your own quick regular items with default rate.";
-  if (shortcutRate) shortcutRate.style.display = retailBillingMode === "dressed" ? "none" : "";
+  if (shortcutRate) shortcutRate.style.display = "";
   if (shortcutUnit) shortcutUnit.style.display = retailBillingMode === "dressed" ? "none" : "";
   if (retailHistorySection) retailHistorySection.style.display = retailBillingMode === "payment" ? "none" : "";
   if (paymentHistorySection) paymentHistorySection.style.display = retailBillingMode === "payment" ? "" : "none";
@@ -505,7 +507,7 @@ function renderRetailShortcuts() {
     button.type = "button";
     button.className = "retail-shortcut-chip";
     button.innerText = shortcutLineType === "DRESSED"
-      ? `${shortcut.name}`
+      ? `${shortcut.name}${Number(shortcut.rate || 0) > 0 ? ` - Rs ${Number(shortcut.rate).toFixed(2)}` : ""}`
       : `${shortcut.name}${Number(shortcut.rate || 0) > 0 ? ` - Rs ${Number(shortcut.rate).toFixed(2)}` : ""}`;
     button.onclick = () => addShortcutRetailItem(shortcut);
     if (shortcutLineType === "DRESSED") {
@@ -544,7 +546,7 @@ function saveRetailShortcut() {
   const lineType = retailBillingMode === "dressed"
     ? "DRESSED"
     : (document.getElementById("shortcutLineType")?.value || "STANDARD");
-  const rate = lineType === "DRESSED" ? 0 : Number(document.getElementById("shortcutRate")?.value || 0);
+  const rate = Number(document.getElementById("shortcutRate")?.value || 0);
   const unit = lineType === "DRESSED" ? "KGS" : (document.getElementById("shortcutUnit")?.value || "KGS");
 
   if (!name) {
@@ -582,7 +584,7 @@ function renderShortcutManagerList() {
     chip.className = "retail-shortcut-chip retail-shortcut-chip-managed";
     const text = document.createElement("span");
     text.innerText = activeLineType === "DRESSED"
-      ? `${shortcut.name} | DRESSED`
+      ? `${shortcut.name} | DRESSED | Rs ${Number(shortcut.rate || 0).toFixed(2)}`
       : `${shortcut.name} | ${shortcut.line_type || "STANDARD"} | ${shortcut.unit || "KGS"} | Rs ${Number(shortcut.rate || 0).toFixed(2)}`;
     const button = document.createElement("button");
     button.type = "button";
@@ -694,7 +696,7 @@ function addShortcutRetailItem(shortcut) {
   if (lineType !== "DRESSED" && !qtyInput.value && unitSelect.value === "PCS") {
     qtyInput.value = "1";
   }
-  if (lineType !== "DRESSED" && Number(shortcut.rate || 0) > 0) {
+  if (Number(shortcut.rate || 0) > 0) {
     rateInput.value = Number(shortcut.rate).toFixed(2);
   }
 
@@ -819,7 +821,7 @@ function applyRetailDefaults(row) {
     if (lineType !== "DRESSED" && (!unitInput.value || unitInput.value === "KGS")) {
       unitInput.value = shortcut.unit || unitInput.value || "KGS";
     }
-    if (lineType !== "DRESSED" && Number(rateInput.value || 0) <= 0 && Number(shortcut.rate || 0) > 0) {
+    if (Number(rateInput.value || 0) <= 0 && Number(shortcut.rate || 0) > 0) {
       rateInput.value = Number(shortcut.rate).toFixed(2);
     }
   }
@@ -856,7 +858,10 @@ function buildRetailBillFromForm(mode = retailBillingMode) {
   const totalWeight = items.reduce((sum, item) => sum + Number(item.weight || (item.unit === "KGS" ? item.nag || item.quantity : 0) || 0), 0);
   const paymentMode = retailField(mode, "paymentMode")?.value || "Cash";
   const settlementType = retailField(mode, "settlementType")?.value || "paid";
+  const iceAmount = Number(retailField(mode, "iceAmount")?.value || 0);
   const rawPaidAmount = retailField(mode, "paidAmount")?.value;
+  const subtotalAmount = totalAmount;
+  totalAmount += iceAmount;
   let paidAmount = Math.min(
     rawPaidAmount === "" && paymentMode !== "Credit" ? totalAmount : Number(rawPaidAmount || 0),
     totalAmount
@@ -885,6 +890,8 @@ function buildRetailBillFromForm(mode = retailBillingMode) {
     outstanding_amount: outstandingAmount,
     requires_customer: outstandingAmount > 0,
     total_amount: totalAmount,
+    items_subtotal_amount: subtotalAmount,
+    ice_amount: iceAmount,
     total_nag: totalNag,
     total_quantity: totalNag,
     total_weight: totalWeight,
@@ -1005,6 +1012,7 @@ function populateRetailFormFromBill(bill) {
   retailField(billMode, "customerName").value = bill.customer_name || "";
   retailField(billMode, "customerPhone").value = bill.customer_phone || "";
   retailField(billMode, "customerAddress").value = bill.customer_address || "";
+  retailField(billMode, "iceAmount").value = bill.ice_amount ?? "";
   retailField(billMode, "paidAmount").value = bill.paid_amount ?? "";
   retailField(billMode, "notes").value = bill.notes || "";
   syncRetailSettlementUi(billMode);
@@ -1089,6 +1097,7 @@ async function saveRetailBill() {
       customer_address: draft.customer_address,
       payment_mode: draft.payment_mode,
       paid_amount: draft.paid_amount,
+      ice_amount: draft.ice_amount,
       notes: draft.notes,
       items: draft.items
     }), { "Content-Type": "application/json" });
@@ -1516,7 +1525,15 @@ function getRetailBillShareText(bill) {
     }
   });
 
+  if (Number(bill.ice_amount || 0) > 0) {
+    lines.push(`Ice | Rs ${formatBillMoney(bill.ice_amount)}`);
+  }
+
   lines.push("");
+  if (Number(bill.ice_amount || 0) > 0) {
+    lines.push(`Items Total: Rs ${formatBillMoney(bill.items_subtotal_amount ?? (Number(bill.total_amount || 0) - Number(bill.ice_amount || 0)))}`);
+    lines.push(`Ice Amount: Rs ${formatBillMoney(bill.ice_amount)}`);
+  }
   lines.push(`Total Amount: Rs ${formatBillMoney(bill.total_amount)}`);
   lines.push(`Received: Rs ${formatBillMoney(bill.paid_amount)}`);
   lines.push(`Remaining: Rs ${formatBillMoney(bill.outstanding_amount)}`);
@@ -1769,6 +1786,7 @@ function resetRetailForm() {
   retailField("regular", "customerName").value = "";
   retailField("regular", "customerPhone").value = "";
   retailField("regular", "customerAddress").value = "";
+  retailField("regular", "iceAmount").value = "";
   retailField("regular", "paidAmount").value = "";
   retailField("regular", "notes").value = "";
   retailField("regular", "settlementType").value = "paid";
@@ -2222,6 +2240,8 @@ function getRetailReceiptMarkup(bill) {
       <div class="thermal-summary">
         <p><span>Total Item(s): ${bill.items.length}</span><span>${isDressedOnlyBill ? `KGS : ${Number(bill.total_weight || 0).toFixed(3)}` : `/NAG : ${formatBillNag(bill.total_nag || bill.total_quantity || 0)}`}</span></p>
         <p><span>Total Kgs</span><strong>${Number(bill.total_weight || 0).toFixed(3)}</strong></p>
+        ${Number(bill.ice_amount || 0) > 0 ? `<p><span>Items Total</span><strong>${formatBillMoney(bill.items_subtotal_amount ?? (Number(bill.total_amount || 0) - Number(bill.ice_amount || 0)))}</strong></p>` : ""}
+        ${Number(bill.ice_amount || 0) > 0 ? `<p><span>Ice Amount</span><strong>${formatBillMoney(bill.ice_amount)}</strong></p>` : ""}
         <p class="thermal-total"><span>TOTAL</span><strong>${formatBillMoney(bill.total_amount)}</strong></p>
         <p><span>${escapeHtml(bill.payment_mode || "Cash")} Payment</span><strong>${formatBillMoney(bill.paid_amount)}</strong></p>
         <p><span>Outstanding balance</span><strong>${formatBillMoney(bill.outstanding_amount)}</strong></p>
@@ -2426,6 +2446,7 @@ async function syncPendingRetailBills(silent = false) {
         customer_address: bill.customer_address,
         payment_mode: bill.payment_mode,
         paid_amount: bill.paid_amount,
+        ice_amount: bill.ice_amount,
         notes: bill.notes,
         items: bill.items
       }), { "Content-Type": "application/json" }, { loader: false });
