@@ -4246,6 +4246,35 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
         purchase_total_amount += amount
         purchase_total_rate_weight += weight * rate
 
+    mortality_rows_raw = db.query(models.Transaction).filter(
+        models.Transaction.date == target_date,
+        models.Transaction.type == "MORTALITY"
+    ).order_by(models.Transaction.item_type.asc()).all()
+
+    mortality_grouped = db.query(
+        models.Transaction.item_type.label("item_type"),
+        func.sum(models.Transaction.quantity).label("quantity"),
+        func.sum(models.Transaction.weight).label("weight")
+    ).filter(
+        models.Transaction.date == target_date,
+        models.Transaction.type == "MORTALITY"
+    ).group_by(
+        models.Transaction.item_type
+    ).order_by(
+        models.Transaction.item_type.asc()
+    ).all()
+
+    mortality_rows = []
+    mortality_total_quantity = None
+    mortality_total_weight = Decimal("0")
+    for row in mortality_grouped:
+        quantity = Decimal(row.quantity or 0) if row.quantity is not None else None
+        weight = Decimal(row.weight or 0)
+        mortality_rows.append(format_sheet_row(row.item_type or "Unknown", weight, Decimal("0"), Decimal("0"), quantity))
+        if quantity is not None:
+            mortality_total_quantity = Decimal(mortality_total_quantity or 0) + quantity
+        mortality_total_weight += weight
+
     sales_raw = db.query(models.Transaction).filter(
         models.Transaction.date == target_date,
         models.Transaction.type == "SALE"
@@ -4304,10 +4333,15 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
     total_purchase_rate = (purchase_total_amount / purchase_total_weight) if purchase_total_weight > 0 else Decimal("0")
 
     closing_quantity = None
-    if any(value is not None for value in [opening_total_quantity, purchase_total_quantity, total_sales_quantity]):
-        closing_quantity = Decimal(opening_total_quantity or 0) + Decimal(purchase_total_quantity or 0) - Decimal(total_sales_quantity or 0)
+    if any(value is not None for value in [opening_total_quantity, purchase_total_quantity, total_sales_quantity, mortality_total_quantity]):
+        closing_quantity = (
+            Decimal(opening_total_quantity or 0)
+            + Decimal(purchase_total_quantity or 0)
+            - Decimal(total_sales_quantity or 0)
+            - Decimal(mortality_total_quantity or 0)
+        )
 
-    closing_weight = opening_total_weight + purchase_total_weight - total_sales_weight
+    closing_weight = opening_total_weight + purchase_total_weight - total_sales_weight - mortality_total_weight
     closing_rate = total_purchase_rate if total_purchase_rate > 0 else Decimal("0")
     closing_amount = closing_weight * closing_rate
 
@@ -4513,9 +4547,14 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
             "rows": purchase_rows,
             "total": format_sheet_row("TOTAL", purchase_total_weight, total_purchase_rate, purchase_total_amount, purchase_total_quantity)
         },
+        "mortality_stock": {
+            "rows": mortality_rows,
+            "total": format_sheet_row("TOTAL", mortality_total_weight, Decimal("0"), Decimal("0"), mortality_total_quantity)
+        },
         "sales_sections": ordered_sales_sections,
         "final_stock": {
             "total_purchases": format_sheet_row("TOTAL PURCHASES", purchase_total_weight, total_purchase_rate, purchase_total_amount, purchase_total_quantity),
+            "mortality": format_sheet_row("MORTALITY", mortality_total_weight, Decimal("0"), Decimal("0"), mortality_total_quantity),
             "sales": format_sheet_row("SALES", total_sales_weight, total_sales_rate, total_sales_amount, total_sales_quantity),
             "closing_stock": format_sheet_row("CLOSING STOCK", closing_weight, closing_rate, closing_amount, closing_quantity),
             "actual_stock": format_sheet_row("ACTUAL STOCK", actual_weight, closing_rate, actual_amount, actual_quantity),
@@ -4564,6 +4603,12 @@ def daily_sheet(date: str, sheet_type: str = "stock", db: Session = Depends(get_
                 "value": float(total_sales_weight),
                 "suffix": " kg",
                 "subvalue": total_sales_quantity is not None and f"{float(total_sales_quantity):.0f} NAG" or None
+            },
+            {
+                "label": "Mortality",
+                "value": float(mortality_total_weight),
+                "suffix": " kg",
+                "subvalue": mortality_total_quantity is not None and f"{float(mortality_total_quantity):.0f} NAG" or None
             },
             {
                 "label": "Expected Closing",

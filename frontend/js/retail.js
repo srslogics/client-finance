@@ -236,6 +236,8 @@ function setRetailBillingMode(mode) {
   } else {
     if (retailBillingMode === "dressed") {
       ensureDressedModeReady();
+    } else {
+      ensureRegularModeReady();
     }
     if (currentRetailBill && !retailDraftDirty && getRetailBillMode(currentRetailBill) === retailBillingMode) {
       renderRetailPreview(currentRetailBill);
@@ -448,6 +450,13 @@ async function ensurePaymentReceiptModeReady() {
   if (!paymentReceiptHistoryLoaded) {
     await loadPaymentReceipts();
     paymentReceiptHistoryLoaded = true;
+  }
+}
+
+function ensureRegularModeReady() {
+  const regularRows = document.getElementById("retailRegularRows");
+  if (regularRows && regularRows.children.length === 0) {
+    addRegularRetailRow();
   }
 }
 
