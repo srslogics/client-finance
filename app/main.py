@@ -668,6 +668,43 @@ def serialize_payment_receipt(receipt, balance_after=None):
     }
 
 
+def recompute_dressed_stock_remaining(db: Session, target_date):
+    if not target_date:
+        return
+
+    entries = db.query(models.DressedStockEntry).filter(
+        models.DressedStockEntry.date == target_date
+    ).order_by(
+        models.DressedStockEntry.created_at.asc()
+    ).all()
+
+    if not entries:
+        return
+
+    for entry in entries:
+        base_weight = Decimal(entry.dressed_weight or 0)
+        entry.remaining_dressed_weight = base_weight if base_weight > 0 else Decimal("0")
+
+    total_dressed_sold = db.query(
+        func.coalesce(func.sum(models.RetailBillItem.weight), 0)
+    ).join(
+        models.RetailBill,
+        models.RetailBill.id == models.RetailBillItem.bill_id
+    ).filter(
+        models.RetailBill.date == target_date,
+        models.RetailBillItem.line_type == "DRESSED"
+    ).scalar()
+
+    remaining_required = Decimal(total_dressed_sold or 0)
+    for entry in entries:
+        if remaining_required <= 0:
+            break
+        available_weight = Decimal(entry.remaining_dressed_weight or 0)
+        used_weight = min(available_weight, remaining_required)
+        entry.remaining_dressed_weight = available_weight - used_weight
+        remaining_required -= used_weight
+
+
 def merge_party_type(existing_type: str | None, new_type: str | None):
     existing = str(existing_type or "").strip().upper()
     incoming = str(new_type or "").strip().upper()
@@ -3383,6 +3420,91 @@ def create_payment_receipt(payload: dict = Body(...), db: Session = Depends(get_
     return {"receipt": serialize_payment_receipt(receipt, balance_after)}
 
 
+@app.put("/payment-receipts/{receipt_id}")
+def update_payment_receipt(receipt_id: UUID, payload: dict = Body(...), db: Session = Depends(get_db)):
+    receipt = db.query(models.PaymentReceipt).filter(models.PaymentReceipt.id == receipt_id).first()
+    if not receipt:
+        return {"error": "Payment receipt not found"}
+
+    target_date = parse_input_date(payload.get("date"))
+    if not target_date:
+        return {"error": "Invalid receipt date"}
+
+    party_name = str(payload.get("party_name") or "").strip()
+    if not party_name:
+        return {"error": "Party name is required"}
+
+    amount = parse_decimal(payload.get("amount"))
+    if amount <= 0:
+        return {"error": "Amount must be greater than 0"}
+
+    direction = normalize_payment_direction(payload.get("direction"))
+    if not direction:
+        return {"error": "Direction must be RECEIVED or PAID"}
+
+    receipt_number = str(payload.get("receipt_number") or "").strip()
+    if not receipt_number:
+        return {"error": "Receipt number is required"}
+
+    existing = db.query(models.PaymentReceipt).filter(
+        models.PaymentReceipt.receipt_number == receipt_number,
+        models.PaymentReceipt.id != receipt.id
+    ).first()
+    existing_bill = db.query(models.RetailBill).filter(
+        models.RetailBill.bill_number == receipt_number
+    ).first()
+    if existing or existing_bill:
+        return {"error": "Receipt number already exists"}
+
+    party_phone = str(payload.get("party_phone") or "").strip()
+    party_address = str(payload.get("party_address") or "").strip()
+    cashier_name = str(payload.get("cashier_name") or "admin").strip()
+    payment_mode = str(payload.get("payment_mode") or "Cash").strip()
+    notes = str(payload.get("notes") or "").strip()
+
+    party_id = get_or_create_party(db, party_name, "BOTH", {}, phone=party_phone, address=party_address)
+
+    receipt.receipt_number = receipt_number
+    receipt.date = target_date
+    receipt.party_id = party_id
+    receipt.party_name = party_name
+    receipt.party_phone = party_phone or None
+    receipt.party_address = party_address or None
+    receipt.cashier_name = cashier_name or "admin"
+    receipt.direction = direction
+    receipt.payment_mode = payment_mode
+    receipt.amount = amount
+    receipt.notes = notes or None
+
+    db.query(models.Transaction).filter(
+        models.Transaction.source_ref == f"payment-receipt:{receipt.id}"
+    ).delete(synchronize_session=False)
+
+    db.add(models.Transaction(
+        date=target_date,
+        party_id=party_id,
+        type="PAYMENT",
+        category=direction,
+        amount=amount,
+        payment_mode=payment_mode,
+        source_ref=f"payment-receipt:{receipt.id}"
+    ))
+
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        return {"error": "Updating payment receipt failed", "details": str(e)}
+
+    db.refresh(receipt)
+    txns = db.query(models.Transaction).filter(models.Transaction.party_id == party_id).order_by(
+        models.Transaction.date.asc(),
+        models.Transaction.created_at.asc()
+    ).all()
+    balance_after, _ = build_ledger(txns)
+    return {"receipt": serialize_payment_receipt(receipt, balance_after)}
+
+
 @app.get("/retail-bills/{bill_id}")
 def get_retail_bill(bill_id: UUID, db: Session = Depends(get_db)):
     bill = db.query(models.RetailBill).filter(models.RetailBill.id == bill_id).first()
@@ -3489,29 +3611,6 @@ def create_retail_bill(payload: dict = Body(...), db: Session = Depends(get_db))
         total_weight += weight
         total_amount += amount
 
-    total_dressed_required = sum(
-        Decimal(item["weight"] or 0)
-        for item in normalized_items
-        if item["line_type"] == "DRESSED"
-    )
-
-    if total_dressed_required > 0:
-        remaining_required = Decimal(total_dressed_required)
-        batches = db.query(models.DressedStockEntry).filter(
-            models.DressedStockEntry.date == target_date,
-            models.DressedStockEntry.remaining_dressed_weight > 0
-        ).order_by(
-            models.DressedStockEntry.created_at.asc()
-        ).all()
-
-        for batch in batches:
-            if remaining_required <= 0:
-                break
-            available_weight = Decimal(batch.remaining_dressed_weight or 0)
-            used_weight = min(available_weight, remaining_required)
-            batch.remaining_dressed_weight = available_weight - used_weight
-            remaining_required -= used_weight
-
     if raw_paid_amount in [None, ""] and payment_mode.strip().upper() != "CREDIT":
         paid_amount = total_amount
 
@@ -3590,6 +3689,7 @@ def create_retail_bill(payload: dict = Body(...), db: Session = Depends(get_db))
             source_ref=f"retail-payment:{bill.id}"
         ))
 
+    recompute_dressed_stock_remaining(db, target_date)
     db.commit()
     db.refresh(bill)
 
@@ -3600,6 +3700,211 @@ def create_retail_bill(payload: dict = Body(...), db: Session = Depends(get_db))
     return {
         "status": "success",
         "message": "Retail bill created",
+        "bill": serialize_retail_bill(bill, saved_items)
+    }
+
+
+@app.put("/retail-bills/{bill_id}")
+def update_retail_bill(bill_id: UUID, payload: dict = Body(...), db: Session = Depends(get_db)):
+    bill = db.query(models.RetailBill).filter(models.RetailBill.id == bill_id).first()
+    if not bill:
+        return {"error": "Retail bill not found"}
+
+    target_date = parse_input_date(payload.get("date"))
+    if not target_date:
+        return {"error": "Invalid bill date"}
+
+    raw_items = payload.get("items") or []
+    if not raw_items:
+        return {"error": "Add at least one retail item"}
+
+    bill_number = str(payload.get("bill_number") or "").strip()
+    if not bill_number:
+        return {"error": "Bill number is required"}
+
+    existing = db.query(models.RetailBill).filter(
+        models.RetailBill.bill_number == bill_number,
+        models.RetailBill.id != bill.id
+    ).first()
+    existing_receipt = db.query(models.PaymentReceipt).filter(
+        models.PaymentReceipt.receipt_number == bill_number
+    ).first()
+    if existing or existing_receipt:
+        return {"error": "Bill number already exists"}
+
+    customer_name = str(payload.get("customer_name") or "").strip()
+    customer_phone = str(payload.get("customer_phone") or "").strip()
+    customer_address = str(payload.get("customer_address") or "").strip()
+    cashier_name = str(payload.get("cashier_name") or "admin").strip()
+    payment_mode = str(payload.get("payment_mode") or "Cash").strip()
+    notes = str(payload.get("notes") or "").strip()
+    raw_paid_amount = payload.get("paid_amount")
+    paid_amount = parse_decimal(raw_paid_amount)
+
+    party_id = None
+    if customer_name:
+        party_id = get_or_create_party(db, customer_name, "VENDOR", {}, phone=customer_phone, address=customer_address)
+
+    normalized_items = []
+    total_quantity = Decimal("0")
+    total_weight = Decimal("0")
+    total_amount = Decimal("0")
+
+    for index, raw_item in enumerate(raw_items, start=1):
+        item_name = str(raw_item.get("item_name") or "").strip()
+        if not item_name:
+            return {"error": f"Item name missing on row {index}"}
+
+        line_type = str(raw_item.get("line_type") or "STANDARD").strip().upper()
+        if line_type not in ["STANDARD", "DRESSED"]:
+            line_type = "STANDARD"
+        quantity = parse_decimal(raw_item.get("nag", raw_item.get("quantity")))
+        rate = parse_decimal(raw_item.get("rate"))
+        unit = str(raw_item.get("unit") or "KGS").strip().upper()
+        weight = parse_decimal(raw_item.get("weight"))
+
+        if line_type != "DRESSED" and quantity <= 0:
+            return {"error": f"Quantity must be greater than 0 on row {index}"}
+
+        if line_type != "DRESSED" and unit == "KGS" and weight <= 0:
+            weight = quantity
+
+        amount = parse_decimal(raw_item.get("amount"))
+        if line_type == "DRESSED":
+            unit = "KGS"
+            if quantity < 0:
+                return {"error": f"Quantity cannot be negative on row {index}"}
+            if weight <= 0:
+                return {"error": f"Kgs must be greater than 0 for dressed chicken on row {index}"}
+            if amount <= 0 and rate > 0:
+                amount = weight * rate
+            if amount <= 0:
+                return {"error": f"Amount must be greater than 0 for dressed chicken on row {index}"}
+            rate = decimal_ratio(amount, weight)
+            quantity = Decimal("0")
+        elif amount <= 0:
+            amount_base = weight if weight > 0 else quantity
+            amount = amount_base * rate
+
+        normalized_items.append({
+            "line_order": index,
+            "item_name": item_name,
+            "line_type": line_type,
+            "quantity": quantity,
+            "unit": unit,
+            "weight": weight,
+            "rate": rate,
+            "amount": amount
+        })
+
+        total_quantity += quantity
+        total_weight += weight
+        total_amount += amount
+
+    if raw_paid_amount in [None, ""] and payment_mode.strip().upper() != "CREDIT":
+        paid_amount = total_amount
+
+    if paid_amount < 0:
+        return {"error": "Paid amount cannot be negative"}
+
+    if paid_amount > total_amount:
+        paid_amount = total_amount
+
+    outstanding_amount = total_amount - paid_amount
+    if outstanding_amount > 0 and not customer_name:
+        return {"error": "Customer name is required for credit retail bills"}
+
+    if outstanding_amount > 0 and payment_mode.strip().upper() == "CASH":
+        payment_mode = "Credit"
+
+    previous_date = bill.date
+
+    bill.bill_number = bill_number
+    bill.date = target_date
+    bill.party_id = party_id
+    bill.customer_name = customer_name or None
+    bill.customer_phone = customer_phone or None
+    bill.customer_address = customer_address or None
+    bill.cashier_name = cashier_name or "admin"
+    bill.payment_mode = payment_mode
+    bill.total_quantity = total_quantity
+    bill.total_weight = total_weight
+    bill.total_amount = total_amount
+    bill.paid_amount = paid_amount
+    bill.outstanding_amount = outstanding_amount
+    bill.notes = notes or None
+
+    db.query(models.RetailBillItem).filter(
+        models.RetailBillItem.bill_id == bill.id
+    ).delete(synchronize_session=False)
+
+    db.query(models.Transaction).filter(
+        or_(
+            models.Transaction.source_ref.like(f"retail-bill:{bill.id}:%"),
+            models.Transaction.source_ref == f"retail-payment:{bill.id}"
+        )
+    ).delete(synchronize_session=False)
+
+    for item in normalized_items:
+        db.add(models.RetailBillItem(
+            bill_id=bill.id,
+            line_order=item["line_order"],
+            item_name=item["item_name"],
+            line_type=item["line_type"],
+            quantity=item["quantity"],
+            unit=item["unit"],
+            weight=item["weight"],
+            rate=item["rate"],
+            amount=item["amount"]
+        ))
+        transaction_category = "RETAIL DRESSED" if item["line_type"] == "DRESSED" else "RETAIL"
+        db.add(models.Transaction(
+            date=target_date,
+            party_id=party_id,
+            type="SALE",
+            category=transaction_category,
+            item_type=item["item_name"],
+            quantity=item["quantity"],
+            weight=item["weight"],
+            rate=item["rate"],
+            amount=item["amount"],
+            payment_mode=payment_mode,
+            source_ref=f"retail-bill:{bill.id}:{item['line_order']}"
+        ))
+
+    if paid_amount > 0:
+        db.add(models.Transaction(
+            date=target_date,
+            party_id=party_id,
+            type="PAYMENT",
+            category="RECEIVED",
+            item_type="Retail Bill Payment",
+            quantity=Decimal("0"),
+            weight=0,
+            rate=0,
+            amount=paid_amount,
+            payment_mode=payment_mode,
+            source_ref=f"retail-payment:{bill.id}"
+        ))
+
+    recompute_dressed_stock_remaining(db, previous_date)
+    if previous_date != target_date:
+        recompute_dressed_stock_remaining(db, target_date)
+
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        return {"error": "Updating retail bill failed", "details": str(e)}
+
+    db.refresh(bill)
+    saved_items = db.query(models.RetailBillItem).filter(
+        models.RetailBillItem.bill_id == bill.id
+    ).order_by(models.RetailBillItem.line_order.asc()).all()
+
+    return {
+        "status": "success",
+        "message": "Retail bill updated",
         "bill": serialize_retail_bill(bill, saved_items)
     }
 

@@ -296,7 +296,54 @@ function getRetailPartyMatches(query) {
     const nameMatch = normalizedName.includes(normalizedQuery);
     const phoneMatch = digitQuery ? normalizedPhone.includes(digitQuery) : false;
     return nameMatch || phoneMatch;
-  }).slice(0, 12);
+  }).sort((a, b) => compareRetailPartyMatches(a, b, query)).slice(0, 12);
+}
+
+function getRetailPartyMatchScore(party, query) {
+  const normalizedQuery = normalizeRetailPartyLookup(query);
+  const digitQuery = String(query || "").replace(/\D/g, "");
+  const normalizedName = normalizeRetailPartyLookup(party?.name);
+  const normalizedPhone = String(party?.phone || "").replace(/\D/g, "");
+
+  if (!normalizedQuery && !digitQuery) return 999;
+  if (normalizedQuery && normalizedName === normalizedQuery) return 0;
+  if (normalizedQuery && normalizedName.startsWith(normalizedQuery)) return 1;
+  if (normalizedQuery) {
+    const words = String(party?.name || "").toLowerCase().split(/\s+/).filter(Boolean);
+    if (words.some(word => word.startsWith(String(query || "").trim().toLowerCase()))) return 2;
+  }
+  if (normalizedQuery && normalizedName.includes(normalizedQuery)) return 3;
+  if (digitQuery && normalizedPhone.startsWith(digitQuery)) return 4;
+  if (digitQuery && normalizedPhone.includes(digitQuery)) return 5;
+  return 999;
+}
+
+function compareRetailPartyMatches(a, b, query) {
+  const scoreDiff = getRetailPartyMatchScore(a, query) - getRetailPartyMatchScore(b, query);
+  if (scoreDiff !== 0) return scoreDiff;
+  return String(a?.name || "").localeCompare(String(b?.name || ""));
+}
+
+function mergeRetailPartyMatches(localParties, remoteParties, query) {
+  const merged = new Map();
+  [...(localParties || []), ...(remoteParties || [])].forEach(party => {
+    const key = normalizeRetailPartyLookup(party?.name);
+    if (!key) return;
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, { ...party });
+      return;
+    }
+    merged.set(key, {
+      ...existing,
+      ...party,
+      phone: existing.phone || party.phone || "",
+      address: existing.address || party.address || ""
+    });
+  });
+  return Array.from(merged.values())
+    .sort((a, b) => compareRetailPartyMatches(a, b, query))
+    .slice(0, 12);
 }
 
 function fillPartySuggestions(suggestions, parties) {
@@ -379,6 +426,11 @@ function applyPaymentReceiptPartyToFields(party) {
   if (phoneInput && !phoneInput.value.trim()) phoneInput.value = party.phone || "";
   if (addressInput && !addressInput.value.trim()) addressInput.value = party.address || "";
   schedulePaymentReceiptPreviewRender();
+}
+
+function renderRetailPartyMatches(boxId, suggestions, parties, onPick) {
+  fillPartySuggestions(suggestions, parties);
+  renderPartySuggestionBox(boxId, parties, onPick);
 }
 
 function isCurrentRetailBillForActiveMode() {
@@ -1777,8 +1829,7 @@ function suggestRetailCustomers(mode = retailBillingMode) {
     applyRetailPartyToFields(exactParty, mode);
   }
   if (cachedMatches.length) {
-    fillPartySuggestions(suggestions, cachedMatches);
-    renderPartySuggestionBox("retailCustomerSuggestBox", cachedMatches, party => {
+    renderRetailPartyMatches("retailCustomerSuggestBox", suggestions, cachedMatches, party => {
       applyRetailPartyToFields(party, mode);
       hideSuggestionBox("retailCustomerSuggestBox");
     });
@@ -1788,18 +1839,13 @@ function suggestRetailCustomers(mode = retailBillingMode) {
     try {
       await ensureRetailPartyDirectoryLoaded();
       const localMatches = getRetailPartyMatches(query);
-      if (localMatches.length) {
-        fillPartySuggestions(suggestions, localMatches);
-        renderPartySuggestionBox("retailCustomerSuggestBox", localMatches, party => {
-          applyRetailPartyToFields(party, mode);
-          hideSuggestionBox("retailCustomerSuggestBox");
-        });
-        return;
-      }
-
       const data = await optionalApiCall(`/party/search?name=${encodeURIComponent(query)}`, { results: [] });
-      fillPartySuggestions(suggestions, data.results || []);
-      renderPartySuggestionBox("retailCustomerSuggestBox", data.results || [], party => {
+      const mergedMatches = mergeRetailPartyMatches(localMatches, data.results || [], query);
+      const remoteExactParty = mergedMatches.find(party => normalizeRetailPartyLookup(party.name) === normalizeRetailPartyLookup(query));
+      if (!exactParty && remoteExactParty) {
+        applyRetailPartyToFields(remoteExactParty, mode);
+      }
+      renderRetailPartyMatches("retailCustomerSuggestBox", suggestions, mergedMatches, party => {
         applyRetailPartyToFields(party, mode);
         hideSuggestionBox("retailCustomerSuggestBox");
       });
@@ -1830,8 +1876,7 @@ function suggestPaymentReceiptParties() {
     applyPaymentReceiptPartyToFields(exactParty);
   }
   if (cachedMatches.length) {
-    fillPartySuggestions(suggestions, cachedMatches);
-    renderPartySuggestionBox("paymentReceiptPartySuggestBox", cachedMatches, party => {
+    renderRetailPartyMatches("paymentReceiptPartySuggestBox", suggestions, cachedMatches, party => {
       applyPaymentReceiptPartyToFields(party);
       hideSuggestionBox("paymentReceiptPartySuggestBox");
     });
@@ -1841,18 +1886,13 @@ function suggestPaymentReceiptParties() {
     try {
       await ensureRetailPartyDirectoryLoaded();
       const localMatches = getRetailPartyMatches(query);
-      if (localMatches.length) {
-        fillPartySuggestions(suggestions, localMatches);
-        renderPartySuggestionBox("paymentReceiptPartySuggestBox", localMatches, party => {
-          applyPaymentReceiptPartyToFields(party);
-          hideSuggestionBox("paymentReceiptPartySuggestBox");
-        });
-        return;
-      }
-
       const data = await optionalApiCall(`/party/search?name=${encodeURIComponent(query)}`, { results: [] });
-      fillPartySuggestions(suggestions, data.results || []);
-      renderPartySuggestionBox("paymentReceiptPartySuggestBox", data.results || [], party => {
+      const mergedMatches = mergeRetailPartyMatches(localMatches, data.results || [], query);
+      const remoteExactParty = mergedMatches.find(party => normalizeRetailPartyLookup(party.name) === normalizeRetailPartyLookup(query));
+      if (!exactParty && remoteExactParty) {
+        applyPaymentReceiptPartyToFields(remoteExactParty);
+      }
+      renderRetailPartyMatches("paymentReceiptPartySuggestBox", suggestions, mergedMatches, party => {
         applyPaymentReceiptPartyToFields(party);
         hideSuggestionBox("paymentReceiptPartySuggestBox");
       });
