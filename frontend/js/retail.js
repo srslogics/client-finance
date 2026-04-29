@@ -1273,14 +1273,15 @@ async function loadRetailBills() {
       : { results: [] };
 
     const mergedResults = mergeRetailBillResults(data.results || [], pendingBills);
+    const visibleResults = mergedResults.filter(bill => normalizeRetailBillMode(bill) === retailBillingMode);
 
-    if (!mergedResults.length) {
-      body.innerHTML = `<tr><td colspan="8" class="empty">No retail bills for this date</td></tr>`;
+    if (!visibleResults.length) {
+      body.innerHTML = `<tr><td colspan="8" class="empty">No ${retailBillingMode === "dressed" ? "dressed" : "regular"} bills for this date</td></tr>`;
       return;
     }
 
     body.innerHTML = "";
-    mergedResults.forEach(bill => {
+    visibleResults.forEach(bill => {
       const row = document.createElement("tr");
       row.innerHTML = `
         <td>${escapeHtml(bill.bill_number)}</td>
@@ -2491,7 +2492,7 @@ function attachRetailConnectivityListeners() {
 }
 
 function formatRetailBillMode(bill) {
-  const mode = bill.payment_mode || "Cash";
+  const mode = normalizeRetailBillMode(bill) === "dressed" ? "Dressed" : "Regular";
   return bill.local_only ? `${mode} • Pending` : mode;
 }
 
