@@ -1,7 +1,7 @@
 const dashboardCharts = {
   trend: null,
   profit: null,
-  leakage: null
+  billingSplit: null
 };
 
 let dashboardRequestToken = 0;
@@ -53,25 +53,20 @@ async function loadDashboard() {
     drawCanvasMessage("leakageChart", "Loading...");
 
     const trendUrl = `/analytics/trend?start_date=${startStr}&end_date=${date}`;
-    const leakageUrl = `/analytics/leakage?start_date=${startStr}&end_date=${date}`;
     const inventoryUrl = `/inventory/by-item?date=${date}`;
 
     const cachedTrend = getCachedResponse(trendUrl);
     const cachedInventory = getCachedResponse(inventoryUrl);
     if (cachedTrend) {
-      renderCharts(cachedTrend, []);
+      renderCharts(cachedTrend);
       generateInsights(data, cachedTrend);
     }
     if (cachedInventory) renderInventory(cachedInventory.inventory || []);
 
     optionalApiCall(trendUrl, [], "GET", null, { loader: false, cache: true }).then(trend => {
       if (!isActivePage("dashboard") || requestToken !== dashboardRequestToken) return;
-      renderCharts(trend, []);
+      renderCharts(trend);
       generateInsights(data, trend);
-    });
-    optionalApiCall(leakageUrl, [], "GET", null, { loader: false, cache: true }).then(leakage => {
-      if (!isActivePage("dashboard") || requestToken !== dashboardRequestToken) return;
-      renderLeakageOnly(leakage);
     });
     optionalApiCall(inventoryUrl, { inventory: [] }, "GET", null, { loader: false, cache: true }).then(inventory => {
       if (!isActivePage("dashboard") || requestToken !== dashboardRequestToken) return;
@@ -81,37 +76,6 @@ async function loadDashboard() {
   } catch (e) {
     console.error(e);
     showToast("Dashboard failed to load");
-  }
-
-  function renderLeakageOnly(leakage) {
-    if (!isActivePage("dashboard")) return;
-    leakage = Array.isArray(leakage) ? leakage : [];
-    if (typeof Chart === "undefined") {
-      drawCanvasMessage("leakageChart", "Charts are unavailable. Check internet connection.");
-      return;
-    }
-
-    const canvas = document.getElementById("leakageChart");
-    if (!canvas) return;
-
-    if (dashboardCharts.leakage) {
-      dashboardCharts.leakage.destroy();
-      dashboardCharts.leakage = null;
-    }
-
-    if (leakage.length > 0) {
-      dashboardCharts.leakage = new Chart(canvas, {
-        type: "line",
-        data: {
-          labels: leakage.map(d => d.date),
-          datasets: [
-            { label: "Leakage", data: leakage.map(d => d.leakage || 0) }
-          ]
-        }
-      });
-    } else {
-      drawCanvasMessage("leakageChart", "No leakage data");
-    }
   }
 }
 
@@ -133,12 +97,11 @@ function setTextValue(id, value) {
   element.innerText = value ?? "";
 }
 
-function renderCharts(trend, leakage) {
+function renderCharts(trend) {
     if (!isActivePage("dashboard")) return;
     destroyDashboardCharts();
 
     trend = Array.isArray(trend) ? trend : [];
-    leakage = Array.isArray(leakage) ? leakage : [];
 
     if (typeof Chart === "undefined") {
       drawCanvasMessage("trendChart", "Charts are unavailable. Check internet connection.");
@@ -151,11 +114,14 @@ function renderCharts(trend, leakage) {
     const sales = trend.map(d => d.sales || 0);
     const purchase = trend.map(d => d.purchase || 0);
     const profit = trend.map(d => d.profit ?? ((d.sales || 0) - (d.purchase || 0)));
+    const regularBilling = trend.map(d => d.regular_billing || 0);
+    const dressedBilling = trend.map(d => d.dressed_billing || 0);
 
     if (!trend || trend.length === 0) {
       console.warn("No trend data");
       drawCanvasMessage("trendChart", "No sales or purchase data");
       drawCanvasMessage("profitChart", "No profit data");
+      drawCanvasMessage("leakageChart", "No billing split data");
       return;
     }
 
@@ -192,18 +158,31 @@ function renderCharts(trend, leakage) {
       }
     });
 
-    if (leakage && leakage.length > 0) {
-      dashboardCharts.leakage = new Chart(leakageCanvas, {
-        type: "line",
+    if (regularBilling.some(value => value > 0) || dressedBilling.some(value => value > 0)) {
+      dashboardCharts.billingSplit = new Chart(leakageCanvas, {
+        type: "bar",
         data: {
-          labels: leakage.map(d => d.date),
+          labels: dates,
           datasets: [
-            { label: "Leakage", data: leakage.map(d => d.leakage || 0) }
+            {
+              label: "Regular Billing",
+              data: regularBilling,
+              backgroundColor: "rgb(47 127 150 / 0.72)",
+              borderColor: "#2f7f96",
+              borderWidth: 1
+            },
+            {
+              label: "Dressed Billing",
+              data: dressedBilling,
+              backgroundColor: "rgb(35 120 91 / 0.72)",
+              borderColor: "#23785b",
+              borderWidth: 1
+            }
           ]
         }
       });
     } else {
-      drawCanvasMessage("leakageChart", "No leakage data");
+      drawCanvasMessage("leakageChart", "No regular or dressed billing data");
     }
   }
 

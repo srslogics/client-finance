@@ -305,7 +305,7 @@ function loadPage(page) {
           </div>
 
           <div class="card chart-card">
-            <h2>Leakage Trend</h2>
+            <h2>Regular vs Dressed Billing</h2>
             <canvas id="leakageChart"></canvas>
           </div>
           </div>

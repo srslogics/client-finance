@@ -3078,7 +3078,27 @@ def get_trend(start_date: str, end_date: str, db: Session = Depends(get_db)):
                 (models.Transaction.type == "PURCHASE", models.Transaction.amount),
                 else_=0
             )
-        ).label("purchase")
+        ).label("purchase"),
+        func.sum(
+            case(
+                (
+                    (models.Transaction.type == "SALE") &
+                    (models.Transaction.category == "RETAIL"),
+                    models.Transaction.amount
+                ),
+                else_=0
+            )
+        ).label("regular_billing"),
+        func.sum(
+            case(
+                (
+                    (models.Transaction.type == "SALE") &
+                    (models.Transaction.category == "RETAIL DRESSED"),
+                    models.Transaction.amount
+                ),
+                else_=0
+            )
+        ).label("dressed_billing")
     ).filter(
         models.Transaction.date.between(start, end)
     ).group_by(models.Transaction.date).order_by(models.Transaction.date).all()
@@ -3086,7 +3106,9 @@ def get_trend(start_date: str, end_date: str, db: Session = Depends(get_db)):
     by_date = {
         r.date: {
             "sales": float(r.sales or 0),
-            "purchase": float(r.purchase or 0)
+            "purchase": float(r.purchase or 0),
+            "regular_billing": float(r.regular_billing or 0),
+            "dressed_billing": float(r.dressed_billing or 0)
         }
         for r in results
     }
@@ -3094,12 +3116,14 @@ def get_trend(start_date: str, end_date: str, db: Session = Depends(get_db)):
     trend = []
     for day in pd.date_range(start=start, end=end):
         current_date = day.date()
-        row = by_date.get(current_date, {"sales": 0, "purchase": 0})
+        row = by_date.get(current_date, {"sales": 0, "purchase": 0, "regular_billing": 0, "dressed_billing": 0})
         trend.append({
             "date": str(current_date),
             "sales": row["sales"],
             "purchase": row["purchase"],
-            "profit": row["sales"] - row["purchase"]
+            "profit": row["sales"] - row["purchase"],
+            "regular_billing": row["regular_billing"],
+            "dressed_billing": row["dressed_billing"]
         })
 
     return trend
