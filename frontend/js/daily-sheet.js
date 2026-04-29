@@ -148,7 +148,7 @@ function createFinalSummarySection(summary) {
   wrapper.appendChild(createSheetTable(rows, null));
 
   const profitCard = document.createElement("div");
-  profitCard.className = "summary-box sheet-profit-box";
+  profitCard.className = "dashboard-kpi-card sheet-profit-box tone-green";
   profitCard.innerHTML = `
     <span>Gross Profit</span>
     <h2>${formatNumber(summary.gross_profit?.rate)}%</h2>
@@ -211,7 +211,7 @@ function createMetricCardStrip(cards) {
 
   cards.forEach(card => {
     const metric = document.createElement("div");
-    metric.className = "summary-box daily-metric-card";
+    metric.className = `dashboard-kpi-card daily-metric-card ${getDailyMetricTone(card.label)}`;
     const prefix = card.prefix || "";
     const suffix = card.suffix || "";
     metric.innerHTML = `
@@ -223,6 +223,24 @@ function createMetricCardStrip(cards) {
   });
 
   return wrapper;
+}
+
+function getDailyMetricTone(label) {
+  const value = String(label || "").toLowerCase();
+
+  if (value.includes("profit") || value.includes("closing") || value.includes("payments in") || value.includes("received")) {
+    return "tone-green";
+  }
+
+  if (value.includes("mortality") || value.includes("short") || value.includes("leakage") || value.includes("payment") || value.includes("paid")) {
+    return "tone-red";
+  }
+
+  if (value.includes("old balance") || value.includes("outstanding") || value.includes("buy") || value.includes("purchase") || value.includes("cost")) {
+    return "tone-slate";
+  }
+
+  return "tone-blue";
 }
 
 function createBalanceSheetSection(title, rows, totals) {

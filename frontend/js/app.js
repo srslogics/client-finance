@@ -215,7 +215,6 @@ function loadPage(page) {
           <div class="page-intro dashboard-intro">
             <span>Control Center</span>
             <h2>Daily revenue, stock control, collections, and counter activity in one working view</h2>
-            <p>Use this as the owner screen for the day: load one date, scan the headline numbers, then move into charts and stock detail only where something needs attention.</p>
           </div>
 
           <div class="card toolbar dashboard-toolbar">
