@@ -196,6 +196,7 @@ function initManualEntryRows() {
   if (document.getElementById("dealerEntryRows")?.children.length === 0) addDealerEntryRow();
   if (document.getElementById("vendorEntryRows")?.children.length === 0) addVendorEntryRow();
   if (document.getElementById("paymentEntryRows")?.children.length === 0) addPaymentEntryRow();
+  if (document.getElementById("mortalityEntryRows")?.children.length === 0) addMortalityEntryRow();
   if (document.getElementById("openingBalanceEntryRows")?.children.length === 0) addOpeningBalanceEntryRow();
   if (document.getElementById("openingStockEntryRows")?.children.length === 0) addOpeningStockEntryRow();
 }
@@ -227,6 +228,7 @@ function removeManualEntryRow(button) {
       dealerEntryRows: addDealerEntryRow,
       vendorEntryRows: addVendorEntryRow,
       paymentEntryRows: addPaymentEntryRow,
+      mortalityEntryRows: addMortalityEntryRow,
       openingBalanceEntryRows: addOpeningBalanceEntryRow,
       openingStockEntryRows: addOpeningStockEntryRow
     };
@@ -272,6 +274,15 @@ function addPaymentEntryRow() {
       <option value="RECEIVED">Received</option>
       <option value="PAID">Paid</option>
     </select>
+    <button type="button" onclick="removeManualEntryRow(this)">Remove</button>
+  `);
+}
+
+function addMortalityEntryRow() {
+  createManualRow("mortalityEntryRows", `
+    <input type="text" class="mortalityItem" placeholder="Hen type" list="itemSuggestions" autocomplete="off" oninput="suggestItems(this)">
+    <input type="number" class="mortalityNag" placeholder="NAG (optional)" min="0" step="1">
+    <input type="number" class="mortalityWeight" placeholder="Weight (optional)" min="0" step="0.01">
     <button type="button" onclick="removeManualEntryRow(this)">Remove</button>
   `);
 }
@@ -376,6 +387,17 @@ function submitPaymentEntries() {
     }))
     .filter(row => row.party || row.amount);
   submitManualEntries("/entries/payment", rows, "Payments saved");
+}
+
+function submitMortalityEntries() {
+  const rows = Array.from(document.querySelectorAll("#mortalityEntryRows .manual-entry-row"))
+    .map(row => ({
+      hen_type: row.querySelector(".mortalityItem")?.value.trim(),
+      nag: row.querySelector(".mortalityNag")?.value,
+      weight: row.querySelector(".mortalityWeight")?.value
+    }))
+    .filter(row => row.hen_type || row.nag || row.weight);
+  submitManualEntries("/entries/mortality", rows, "Mortality saved");
 }
 
 function submitOpeningBalanceEntries() {

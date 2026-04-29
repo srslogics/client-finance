@@ -1062,6 +1062,84 @@ def create_payment_entries(payload: dict = Body(...), input_date: str = None, db
     return upload_result(inserted, skipped, errors)
 
 
+@app.post("/entries/mortality")
+def create_mortality_entries(payload: dict = Body(...), input_date: str = None, db: Session = Depends(get_db)):
+    target_date = parse_input_date(input_date)
+    if not target_date:
+        return {"error": "Select working date"}
+
+    rows = payload.get("rows") or []
+    if not rows:
+        return {"error": "Add at least one mortality row"}
+
+    inserted = 0
+    skipped = 0
+    errors = []
+    seen_transactions = set()
+
+    for index, row in enumerate(rows, start=1):
+        try:
+            item_type = str(row.get("hen_type") or row.get("item_type") or "").strip()
+            quantity = parse_decimal(row.get("nag", row.get("quantity")))
+            weight = parse_decimal(row.get("weight", row.get("kgs")))
+
+            if not item_type:
+                skipped += 1
+                row_error(errors, index, "Enter hen type")
+                continue
+
+            if quantity < 0 or weight < 0:
+                skipped += 1
+                row_error(errors, index, "NAG and weight cannot be negative")
+                continue
+
+            if quantity <= 0 and weight <= 0:
+                skipped += 1
+                row_error(errors, index, "Enter NAG or weight")
+                continue
+
+            txn_key = (target_date, item_type, float(quantity), float(weight), "MORTALITY")
+            existing_txn = db.query(models.Transaction).filter_by(
+                date=target_date,
+                party_id=None,
+                type="MORTALITY",
+                category="MORTALITY",
+                item_type=item_type,
+                quantity=quantity if quantity > 0 else None,
+                weight=weight if weight > 0 else 0
+            ).first()
+
+            if existing_txn or txn_key in seen_transactions:
+                skipped += 1
+                continue
+
+            db.add(models.Transaction(
+                date=target_date,
+                party_id=None,
+                type="MORTALITY",
+                category="MORTALITY",
+                item_type=item_type,
+                quantity=quantity if quantity > 0 else None,
+                weight=weight if weight > 0 else 0,
+                rate=0,
+                amount=0,
+                payment_mode="NA"
+            ))
+            seen_transactions.add(txn_key)
+            inserted += 1
+        except Exception as e:
+            skipped += 1
+            row_error(errors, index, str(e))
+
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        return {"error": "Saving mortality entries failed", "details": str(e)}
+
+    return upload_result(inserted, skipped, errors)
+
+
 @app.post("/entries/opening-balance")
 def create_opening_balance_entries(payload: dict = Body(...), input_date: str = None, db: Session = Depends(get_db)):
     target_date = parse_input_date(input_date)

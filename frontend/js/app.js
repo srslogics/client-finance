@@ -122,6 +122,20 @@ function loadPage(page) {
             <div class="section-head">
               <div>
                 <span>Step 6</span>
+                <h2>Mortality</h2>
+              </div>
+            </div>
+            <div id="mortalityEntryRows" class="stock-rows"></div>
+            <div class="upload-box">
+              <button onclick="addMortalityEntryRow()">Add Mortality Row</button>
+              <button onclick="submitMortalityEntries()">Save Mortality</button>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-head">
+              <div>
+                <span>Step 7</span>
                 <h2>Process Day</h2>
               </div>
             </div>
