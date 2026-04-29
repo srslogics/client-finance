@@ -56,11 +56,11 @@ body {
   content: "";
   position: absolute;
   top: 0;
-  right: -36px;
+  right: -52px;
   bottom: 0;
-  width: 48px;
+  width: 72px;
   pointer-events: none;
-  background: linear-gradient(90deg, rgb(26 22 18 / 0.24) 0%, rgb(26 22 18 / 0.08) 42%, rgb(238 243 242 / 0) 100%);
+  background: linear-gradient(90deg, rgb(26 22 18 / 0.22) 0%, rgb(26 22 18 / 0.08) 40%, rgb(238 243 242 / 0) 100%);
 }
 
 .brand {
@@ -261,6 +261,7 @@ input[type="file"] {
   min-width: 0;
   padding: 32px clamp(24px, 4vw, 56px) 48px;
   overflow-y: auto;
+  background: linear-gradient(90deg, rgb(26 22 18 / 0.05) 0, rgb(26 22 18 / 0.015) 56px, rgb(238 243 242 / 0) 144px);
 }
 
 .container {
@@ -570,10 +571,18 @@ input[type="file"] {
 
 .dashboard-detail-grid {
   display: grid;
-  grid-template-columns: minmax(280px, 0.85fr) minmax(0, 1.65fr);
+  grid-template-columns: 1fr;
   gap: 18px;
   margin-top: 20px;
   align-items: start;
+}
+
+.dashboard-insights-card {
+  width: min(100%, 520px);
+}
+
+.dashboard-inventory-card {
+  width: 100%;
 }
 
 .dashboard-insights-card ul {
