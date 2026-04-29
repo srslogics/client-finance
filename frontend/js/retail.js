@@ -853,15 +853,14 @@ function collectRetailItemsFromForm(mode = retailBillingMode) {
 
 function buildRetailBillFromForm(mode = retailBillingMode) {
   const items = collectRetailItemsFromForm(mode);
-  const totalAmount = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const itemsSubtotalAmount = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const totalNag = items.reduce((sum, item) => sum + Number(item.nag || item.quantity || 0), 0);
   const totalWeight = items.reduce((sum, item) => sum + Number(item.weight || (item.unit === "KGS" ? item.nag || item.quantity : 0) || 0), 0);
   const paymentMode = retailField(mode, "paymentMode")?.value || "Cash";
   const settlementType = retailField(mode, "settlementType")?.value || "paid";
   const iceAmount = Number(retailField(mode, "iceAmount")?.value || 0);
   const rawPaidAmount = retailField(mode, "paidAmount")?.value;
-  const subtotalAmount = totalAmount;
-  totalAmount += iceAmount;
+  const totalAmount = itemsSubtotalAmount + iceAmount;
   let paidAmount = Math.min(
     rawPaidAmount === "" && paymentMode !== "Credit" ? totalAmount : Number(rawPaidAmount || 0),
     totalAmount
@@ -890,7 +889,7 @@ function buildRetailBillFromForm(mode = retailBillingMode) {
     outstanding_amount: outstandingAmount,
     requires_customer: outstandingAmount > 0,
     total_amount: totalAmount,
-    items_subtotal_amount: subtotalAmount,
+    items_subtotal_amount: itemsSubtotalAmount,
     ice_amount: iceAmount,
     total_nag: totalNag,
     total_quantity: totalNag,
