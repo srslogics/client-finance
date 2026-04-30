@@ -230,14 +230,46 @@ def parse_input_date(value: str):
         return None
 
 
-def build_ledger(txns):
-    balance = Decimal("0")
-    ledger = []
+def summarize_ledger_transactions(txns):
+    summarized = []
+    index = 0
 
-    for txn in txns:
+    while index < len(txns):
+        txn = txns[index]
+        source_ref = str(getattr(txn, "source_ref", "") or "")
+
+        if source_ref.startswith("retail-bill:"):
+            bill_prefix = ":".join(source_ref.split(":")[:2])
+            grouped = []
+
+            while index < len(txns):
+                candidate = txns[index]
+                candidate_ref = str(getattr(candidate, "source_ref", "") or "")
+                if not candidate_ref.startswith(bill_prefix):
+                    break
+                grouped.append(candidate)
+                index += 1
+
+            first = grouped[0]
+            total_amount = sum(Decimal(g.amount or 0) for g in grouped)
+            total_weight = sum(Decimal(g.weight or 0) for g in grouped)
+            total_quantity = sum(Decimal(g.quantity or 0) for g in grouped)
+
+            summarized.append({
+                "date": first.date,
+                "type": "SALE",
+                "category": "RETAIL BILL",
+                "item": "Retail Bill",
+                "payment_mode": first.payment_mode or "NA",
+                "amount": total_amount,
+                "delta": total_amount,
+                "weight": total_weight,
+                "quantity": total_quantity
+            })
+            continue
+
         amount = Decimal(txn.amount or 0)
         delta = ledger_delta(txn)
-        balance += delta
 
         txn_type = txn.type
         if txn.type == "PAYMENT" and txn.category:
@@ -245,12 +277,37 @@ def build_ledger(txns):
         elif txn.type == "OPENING" and txn.category:
             txn_type = f"OPENING {txn.category}"
 
-        ledger.append({
-            "date": str(txn.date),
+        summarized.append({
+            "date": txn.date,
             "type": txn_type,
             "category": txn.category or "",
             "item": txn.item_type or "",
             "payment_mode": txn.payment_mode or "NA",
+            "amount": amount,
+            "delta": delta,
+            "weight": Decimal(txn.weight or 0),
+            "quantity": Decimal(txn.quantity or 0)
+        })
+        index += 1
+
+    return summarized
+
+
+def build_ledger(txns):
+    balance = Decimal("0")
+    ledger = []
+
+    for txn in summarize_ledger_transactions(txns):
+        amount = Decimal(txn["amount"] or 0)
+        delta = Decimal(txn["delta"] or 0)
+        balance += delta
+
+        ledger.append({
+            "date": str(txn["date"]),
+            "type": txn["type"],
+            "category": txn["category"] or "",
+            "item": txn["item"] or "",
+            "payment_mode": txn["payment_mode"] or "NA",
             "amount": float(amount),
             "delta": float(delta),
             "balance": float(balance)
@@ -260,12 +317,20 @@ def build_ledger(txns):
 
 
 def build_party_summary(txns, balance):
+    last_txn = txns[-1] if txns else None
+    last_date = last_txn.date if last_txn else None
+    opening_balance = Decimal("0")
+
+    if last_date:
+        for txn in txns:
+            if txn.date >= last_date:
+                break
+            opening_balance += ledger_delta(txn)
+
     total_sales = sum(Decimal(t.amount or 0) for t in txns if t.type == "SALE")
     total_purchase = sum(Decimal(t.amount or 0) for t in txns if t.type == "PURCHASE")
     total_received = sum(Decimal(t.amount or 0) for t in txns if t.type == "PAYMENT" and t.category == "RECEIVED")
     total_paid = sum(Decimal(t.amount or 0) for t in txns if t.type == "PAYMENT" and t.category == "PAID")
-    opening_balance = sum(Decimal(t.amount or 0) for t in txns if t.type == "OPENING")
-    last_txn = txns[-1] if txns else None
 
     return {
         "opening_balance": float(opening_balance),
