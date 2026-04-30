@@ -320,17 +320,19 @@ def build_party_summary(txns, balance):
     last_txn = txns[-1] if txns else None
     last_date = last_txn.date if last_txn else None
     opening_balance = Decimal("0")
+    day_txns = []
 
     if last_date:
         for txn in txns:
             if txn.date >= last_date:
-                break
-            opening_balance += ledger_delta(txn)
+                day_txns.append(txn)
+            else:
+                opening_balance += ledger_delta(txn)
 
-    total_sales = sum(Decimal(t.amount or 0) for t in txns if t.type == "SALE")
-    total_purchase = sum(Decimal(t.amount or 0) for t in txns if t.type == "PURCHASE")
-    total_received = sum(Decimal(t.amount or 0) for t in txns if t.type == "PAYMENT" and t.category == "RECEIVED")
-    total_paid = sum(Decimal(t.amount or 0) for t in txns if t.type == "PAYMENT" and t.category == "PAID")
+    total_sales = sum(Decimal(t.amount or 0) for t in day_txns if t.type == "SALE")
+    total_purchase = sum(Decimal(t.amount or 0) for t in day_txns if t.type == "PURCHASE")
+    total_received = sum(Decimal(t.amount or 0) for t in day_txns if t.type == "PAYMENT" and t.category == "RECEIVED")
+    total_paid = sum(Decimal(t.amount or 0) for t in day_txns if t.type == "PAYMENT" and t.category == "PAID")
 
     return {
         "opening_balance": float(opening_balance),
